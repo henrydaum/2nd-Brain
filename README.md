@@ -89,7 +89,7 @@ The application generates a config.json file in the %LOCALAPPDATA%/2nd Brain/ di
 ## Technical Notes
 It is possible to avoid importing PyTorch and Sentence Transformers if you write a new class in embedClass.py that matches the old one. For example, a class that gets embeddings from an LM Studio model, the OpenAI API, or the Gemini API are all totally possible. Similarly, new classes from different sources can be written for the OCR model, and the LLM model. Apart from the GUI, which uses PySide6, the entire application is extremely lightweight and Pythonic, and only uses a couple non-native, lightweight libraries.
 
-Increasing max_workers in config.json increases the number of threads available for doing tasks, making it possible to fully utilize a GPU to embed tens of thousands of files per hour. This is much, much faster than the single-threading I had in the old version, and because of the SQL idempotency in database.py, it can be done with no risk of data loss or double-counting.
+Increasing max_workers in config.json increases the number of threads available for doing tasks, making it possible to fully utilize a GPU to embed tens of thousands of files per hour. This is much, much faster than the single-threading, even if the batch size is high, and because of the SQL idempotency and the tasking system in orchestrator.py, it can be done with no risk of data loss or double-counting.
 
 ## License
 
