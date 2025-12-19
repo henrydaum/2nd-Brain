@@ -22,7 +22,7 @@ Parses and indexes numerous folders with a wide variety of formats including PDF
 
 ### Real-Time "Watchdog" ◄ ►
 The system monitors your folders for changes. If you add, delete, or edit a file, the index updates instantly without requiring a full manual rescan.
-* **How to use:** Fully automatic. As long as the application is running (even in the tray), your index remains up to date. If the OCR, Embedding, or LLM models are loaded, they will automatically process the files to enable search.
+* **How to use:** Fully automatic. As long as the application is running (even in the tray), your index remains up to date. If the OCR, Embedding, or LLM models are loaded, they will automatically process the files to enable search. You can add or remove folders and extensions as needed.
 
 ### Bot Analysis
 When the LLM is loaded, it will automatically rate every file in your database on a scale from 0.0 to 1.0 based on the overall quality. Files with higher scores are boosted in the search algorithm.
@@ -111,6 +111,7 @@ Increasing `max_workers` in `config.json` maximizes thread usage, enabling GPUs 
 ## License
 
 This project is licensed under the MIT License.
+
 
 
 
