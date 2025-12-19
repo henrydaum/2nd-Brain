@@ -13,6 +13,10 @@ This application indexes local files and screen activity to enable hybrid search
 * **Local Architecture**: Built on SQLite and local Python libraries. No external telemetry or cloud storage is required.
 * **Real-Time Monitoring**: Monitors configured directories for file changes, additions, or deletions and updates the index dynamically.
 
+## Screenshots
+
+
+
 ## Installation
 
 ### Prerequisites
@@ -32,6 +36,7 @@ This application indexes local files and screen activity to enable hybrid search
   ```python main.pyw```
 
 ## Configuration
+
 The application generates a config.json file in the %LOCALAPPDATA%/2nd Brain/ directory upon the first run. You can modify this file directly or use the Settings tab in the interface.
 
 Key configuration options:
@@ -42,6 +47,7 @@ Key configuration options:
 - ```use_drive```: Boolean to enable or disable Google Drive indexing.
 
 ## Architecture
+
 - **main.pyw**: Application entry point. Handles initialization of the database, configuration loading, and service startup.
 - **gui.py**: The frontend interface built with PySide6. Manages user interaction and displays search results.
 - **orchestrator.py**: Manages background tasks. Uses a priority queue and thread pool to handle OCR, embedding generation, and LLM analysis without blocking the UI.
@@ -49,5 +55,6 @@ Key configuration options:
 - **watcher.py**: Implements watchdog observers to detect file system events and submit tasks to the orchestrator.
 - **search.py**: Contains logic for lexical, semantic, and hybrid search algorithms, including MMR reranking.
 
-### License
+## License
+
 This project is licensed under the MIT License.
