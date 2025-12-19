@@ -75,10 +75,10 @@ The application generates a config.json file in the %LOCALAPPDATA%/2nd Brain/ di
 | `max_workers` | The maximum number of background threads used by the Orchestrator. Use the maximum your computer can handle. | Integer (e.g., `4`, `6`, `12`) |
 | `ocr_backend` | The OCR engine to use. Currently, only the native Windows 10/11 engine is fully implemented. | `"Windows"` |
 | `embed_backend` | The source used for generating vector embeddings. Right now, there is only one source implemented. | `"Sentence Transformers"` |
-| `text_model_name` | The HuggingFace model ID used for embedding text documents. | String (e.g., `"BAAI/bge-small-en-v1.5"`) |
-| `image_model_name` | The CLIP model used for embedding images. | String (e.g., `"clip-ViT-B-32"`) |
+| `text_model_name` | The HuggingFace model ID used for embedding text documents. | String (e.g., `"BAAI/bge-small-en-v1.5"`, `"BAAI/bge-large-en-v1.5"`, and `"BAAI/bge-m3"`—these have been extensively tested and work well; bge-m3 is multilingual.) |
+| `image_model_name` | The CLIP model used for embedding images. | String (e.g., `"clip-ViT-B-32"`, `"clip-ViT-B-16"`, and `"clip-ViT-L-14"`—these have been extensively tested and work well.) |
 | `llm_backend` | The service provider for the LLM analysis tasks. | `"LM Studio"`, `"OpenAI"` |
-| `lms_model_name` | The model identifier to request when connecting to a local LM Studio server. | String (e.g., `"gemma-3-4b-it"`) |
+| `lms_model_name` | The model identifier to request when connecting to a local LM Studio server. In order for this to work, LM Studio must be running in the background with the model with this name pre-downloaded. | String (e.g., `"gemma-3-4b-it"`) |
 | `openai_model_name` | The model identifier to use if OpenAI backend is selected. | String (e.g., `"gpt-4o"`, `"gpt-3.5-turbo"`) |
 | `use_drive` | Enables or disables the Google Drive API integration. | `true`, `false` |
 | `quality_weight` | How much the "Quality" score (gotten from the LLM) impacts the final ranking vs. the search match score. | Float `0.0` - `1.0` |
@@ -111,6 +111,7 @@ Increasing `max_workers` in `config.json` maximizes thread usage, enabling GPUs 
 ## License
 
 This project is licensed under the MIT License.
+
 
 
 
