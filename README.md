@@ -2,16 +2,16 @@
 
 # Second Brain
 
-A local, privacy-focused search engine and activity tracker for Windows.
-This application indexes local files and screen activity to enable hybrid search (keyword and semantic) without sending data to the cloud. All processing, including embeddings, OCR, and database management, is performed locally on the device.
+This application indexes local files and screen activity to enable hybrid search (keyword and semantic). All processing, including embeddings, OCR, and LLM analysis, can be performed on-device and locally.
+The application lives in the system tray and syncs with disc changes in the background when models are loaded, enabling instant semantic search on the new files. It takes as few as 3 clicks to complete a search and only a few seconds.
 
 ## Features
 
-* **Hybrid Search**: Utilizes SQLite FTS5 for lexical search and SentenceTransformers for semantic search, allowing retrieval by file content or meaning.
-* **Passive Screen Capture**: An optional background service that captures screen activity at configurable intervals. Images are processed via OCR to make visual history text-searchable.
-* **Universal Indexing**: Supports parsing and indexing of PDF, DOCX, PPTX, text/code files, images, and Google Drive shortcuts (.gdoc).
-* **Local Architecture**: Built on SQLite and local Python libraries. No external telemetry or cloud storage is required.
-* **Real-Time Monitoring**: Monitors configured directories for file changes, additions, or deletions and updates the index dynamically.
+- **Hybrid Search**: Utilizes SQLite FTS5 for lexical search and SentenceTransformers for semantic search, allowing retrieval by file content or meaning.
+- **Passive Screen Capture**: An optional background service that captures screen activity at configurable intervals. Images are processed via OCR to make visual history text-searchable.
+- **Universal Indexing**: Supports parsing and indexing of PDF, DOCX, PPTX, text/code files, images, and Google Drive shortcuts (.gdoc).
+- **Local Architecture**: Built on SQLite and local Python libraries. No external telemetry or cloud storage is required.
+- **Real-Time Monitoring**: Monitors configured directories for file changes, additions, or deletions and updates the index dynamically.
 
 ## Screenshots
 
@@ -21,8 +21,8 @@ This application indexes local files and screen activity to enable hybrid search
 ## Installation
 
 ### Prerequisites
-* Python 3.10 or higher
-* Windows 10/11 (Required for the native Windows OCR engine)
+- Python 3.10 or higher
+- Windows 10/11 (Required for the native Windows OCR engine)
 
 ### Setup
 1. **Clone the repository:**
@@ -86,12 +86,11 @@ The application generates a config.json file in the %LOCALAPPDATA%/2nd Brain/ di
 - **watcher.py**: Implements watchdog observers to detect file system events and submit tasks to the orchestrator, enabling live sync.
 - **search.py**: Contains logic for the hybrid lexical/semantic search algorithm, including MMR reranking.
 
+## Technical Notes
+It is possible to avoid importing PyTorch and Sentence Transformers if you write a new class in the embedClass code that matches the old one. For example, a class that gets embeddings from an LM Studio model, the OpenAI API, or the Gemini API are all totally possible. Similarly, new classes from different sources can be written for the OCR model, and the LLM model. Apart from the GUI, which uses PySide6, the entire application is extremely lightweight and Pythonic, only using a couple non-native, lightweight libraries.
+
+Increasing max_workers in config.json increases the number of threads available for doing tasks, making it possible to fully utilize a GPU to embed tens of thousands of files per hour. This is much, much faster than single-threaded embedding tasks, and because of the SQL idempotency in database.py, it can be done with no risk of data loss or double-counting.
+
 ## License
 
 This project is licensed under the MIT License.
-
-
-
-
-
-
