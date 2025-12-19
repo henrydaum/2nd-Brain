@@ -9,7 +9,7 @@ Powered by pre-loaded AI models, Second Brain delivers nearly instantaneous resu
 ## Features
 
 ### Hybrid Search ▲ ▲
-Combines **Lexical Search** (exact keyword matching via SQLite FTS5) with **Semantic Search** (meaning-based matching via SentenceTransformers). This allows you to find "that invoice from last week" even if you don't remember the file name.
+Combines **Lexical Search** (exact keyword matching via SQLite FTS5) with **Semantic Search** (meaning-based matching via SentenceTransformers). This allows you to find an "invoice from last week" even if you don't remember the file name.
 * **How to use:** Type naturally into the search bar. You can use specific keywords (e.g., `invoice_2024.pdf`) or natural language descriptions (e.g., `"the blue logo design we rejected"`). Your data must be processed using OCR and embedding models to be available for search. Semantic search requires that embedding models are loaded. Lexical search is possible without embedding models loaded.
 
 ### "The Lens" (Passive Screen Capture) ▼ ▼
@@ -111,6 +111,7 @@ Increasing `max_workers` in `config.json` maximizes thread usage, enabling GPUs 
 ## License
 
 This project is licensed under the MIT License.
+
 
 
 
