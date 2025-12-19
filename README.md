@@ -85,8 +85,8 @@ The application generates a config.json file in the %LOCALAPPDATA%/2nd Brain/ di
 | `mmr_lambda` | Controls diversity in results. Higher values prioritize relevance; lower values prioritize diversity. | Float `0.0` - `1.0` |
 | `mmr_alpha` | Controls the balance between Semantic (1.0) and Lexical (0.0) search results. | Float `0.0` - `1.0` |
 | `num_results` | The maximum number of search results to display. | Integer (e.g., `20`, `50`) |
-| `text_extensions` | File extensions treated as text documents. Every extension written here must have a parser in Parsers.py. | List of strings (all valid: `[".txt", ".md", ".pdf", ".docx", ".doc", ".gdoc", ".rtf", ".pptx", ".csv", ".xlsx", ".xls", ".json", ".yaml", ".yml", ".xml", ".ini", ".toml", ".env", ".py", ".js", ".jsx", ".ts", ".tsx", ".html", ".css", ".c", ".cpp", ".h", ".java", ".cs", ".php", ".rb", ".go", ".rs", ".sql", ".sh", ".bat", ".ps1"]`) |
-| `image_extensions` | File extensions treated as images. Every extension written here must have a parser in Parsers.py. | List of strings (all valid: `[".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".heif", ".tif", ".tiff", ".bmp", ".ico"]`) |
+| `text_extensions` | File extensions treated as text documents. Every extension here has a parser in Parsers.py, but more can be written. | List of strings (all valid: `[".txt", ".md", ".pdf", ".docx", ".doc", ".gdoc", ".rtf", ".pptx", ".csv", ".xlsx", ".xls", ".json", ".yaml", ".yml", ".xml", ".ini", ".toml", ".env", ".py", ".js", ".jsx", ".ts", ".tsx", ".html", ".css", ".c", ".cpp", ".h", ".java", ".cs", ".php", ".rb", ".go", ".rs", ".sql", ".sh", ".bat", ".ps1"]`) |
+| `image_extensions` | File extensions treated as images. Every extension written here has a parser in Parsers.py. | List of strings (all valid: `[".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".heif", ".tif", ".tiff", ".bmp", ".ico"]`) |
 | `use_cuda` | Enables GPU acceleration for embeddings/OCR if available. | `true`, `false` |
 | `screenshot_interval`| The delay in seconds between automatic screen captures. | Integer (e.g., `15`, `60`) |
 | `screenshot_folder` | Custom path to save screenshots. If empty, defaults to internal AppData folder. | String (Path) or `""` |
@@ -111,6 +111,7 @@ Increasing `max_workers` in `config.json` maximizes thread usage, enabling GPUs 
 ## License
 
 This project is licensed under the MIT License.
+
 
 
 
