@@ -15,7 +15,8 @@ This application indexes local files and screen activity to enable hybrid search
 
 ## Screenshots
 
-
+<img width="1926" height="1260" alt="Screenshot 2025-12-19 130548" src="https://github.com/user-attachments/assets/4469f6c9-c2f0-41a7-b08e-4af07003435e" />
+<img width="567" height="582" alt="Screenshot 2025-12-19 131130" src="https://github.com/user-attachments/assets/a6068881-c96d-4259-9ece-67716a92d722" />
 
 ## Installation
 
@@ -58,3 +59,4 @@ Key configuration options:
 ## License
 
 This project is licensed under the MIT License.
+
