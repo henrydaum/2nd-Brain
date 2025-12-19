@@ -25,16 +25,24 @@ This application indexes local files and screen activity to enable hybrid search
 * Windows 10/11 (Required for the native Windows OCR engine)
 
 ### Setup
-1. Clone the repository:
-  ```git clone https://github.com/henrydaum/2nd-Brain.git```
-  ```cd 2nd-Brain```
-2. Create and activate a virtual environment:
-  ```python -m venv venv```
-  ```.\venv\Scripts\activate```
-3. Install dependencies:
-  ```pip install -r requirements.txt```
-4. Run the application:
-  ```python main.pyw```
+1. **Clone the repository:**
+   ```bash
+   git clone [https://github.com/henrydaum/2nd-Brain.git](https://github.com/henrydaum/2nd-Brain.git)
+   cd 2nd-Brain
+   ```
+2. **Create and activate a virtual environment:**
+   ```bash
+   python -m venv venv
+   .\venv\Scripts\activate
+   ```
+3. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+4. **Run the application:**
+   ```bash
+   python main.pyw
+   ```
 
 ## Configuration
 
@@ -79,5 +87,6 @@ The application generates a config.json file in the %LOCALAPPDATA%/2nd Brain/ di
 ## License
 
 This project is licensed under the MIT License.
+
 
 
