@@ -2,7 +2,7 @@
 
 # Second Brain
 
-This is an improved version of a program I wrote earlier this year: [https://github.com/henrydaum/second-brain](https://github.com/henrydaum/second-brain), [henrydaum.site](henrydaum.site).
+This is an improved version of a program I wrote earlier this year. You can view that version here: [github.com/henrydaum/second-brain](https://github.com/henrydaum/second-brain), [henrydaum.site](henrydaum.site).
 
 <mark>Second Brain is a multimodal userspace operating system that transforms your static local storage into a high-performance, private general intelligence hub.</mark> Running quietly in your system tray, it uses robust multithreading and SQL to sync your files and screen history as they happen, creating a fully searchable on-device knowledge base.
 
@@ -113,6 +113,7 @@ Increasing `max_workers` in `config.json` maximizes thread usage, enabling GPUs 
 ## License
 
 This project is licensed under the MIT License.
+
 
 
 
