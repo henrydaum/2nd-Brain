@@ -35,11 +35,13 @@ This application indexes local files and screen activity to enable hybrid search
    python -m venv venv
    .\venv\Scripts\activate
    ```
-3. **Install dependencies:** NOTE: this installs PyTorch as ```torch```, which is the CPU-only version. If you want to use GPU, you will need to install PyTorch manually based on your CUDA Toolkit version at [https://pytorch.org/get-started/locally/](https://pytorch.org/get-started/locally/).
+3. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
-4. **Run the application:**
+   NOTE: this installs PyTorch as ```torch```, which is the CPU-only version. If you want to use GPU, you will need to install PyTorch manually based on your CUDA Toolkit version at [https://pytorch.org/get-started/locally/](https://pytorch.org/get-started/locally/).
+   
+5. **Run the application:**
    ```bash
    python main.pyw
    ```
@@ -87,6 +89,7 @@ The application generates a config.json file in the %LOCALAPPDATA%/2nd Brain/ di
 ## License
 
 This project is licensed under the MIT License.
+
 
 
 
