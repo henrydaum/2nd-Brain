@@ -110,9 +110,14 @@ Aside from the PySide6-based GUI, the application is lightweight and primarily u
 
 Increasing `max_workers` in `config.json` maximizes thread usage, enabling GPUs to process embeddings for tens of thousands of files per hour. This multithreading, combined with `orchestrator.py`'s SQL idempotency, ensures speedy processing without data loss or redundancy.
 
+## Coming Soon
+
+In order to enable RAG, I plan to expose an API endpoint for the search algorithm. This would enable LLMs trained for tool use to query the entire database from anywhere on your computer.
+
 ## License
 
 This project is licensed under the MIT License.
+
 
 
 
