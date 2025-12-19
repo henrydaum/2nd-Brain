@@ -2,8 +2,8 @@
 
 # Second Brain
 
-This application indexes local files and screen activity to enable hybrid search (keyword and semantic). All processing, including embeddings, OCR, and LLM analysis, can be performed on-device and locally.
-The application lives in the system tray and syncs with disc changes in the background when models are loaded, enabling instant semantic search on the new files. It takes as few as 3 clicks to complete a search and only a few seconds.
+This application indexes local files and screen activity to enable hybrid search (keyword and semantic) over large, sprawling databases. All processing, including embeddings, OCR, and LLM analysis, can be performed locally on-device, ensuring privacy.
+The application lives in the system tray and syncs with disc changes in the background, enabling instant access in the search tool. By keeping models loaded in the background, it takes as few as 3 clicks and a few seconds to complete a search.
 
 ## Features
 
@@ -87,7 +87,7 @@ The application generates a config.json file in the %LOCALAPPDATA%/2nd Brain/ di
 - **search.py**: Contains logic for the hybrid lexical/semantic search algorithm, including MMR reranking.
 
 ## Technical Notes
-It is possible to avoid importing PyTorch and Sentence Transformers if you write a new class in embedClass.py that matches the old one. For example, a class that gets embeddings from an LM Studio model, the OpenAI API, or the Gemini API are all totally possible. Similarly, new classes from different sources can be written for the OCR model, and the LLM model. Apart from the GUI, which uses PySide6, the entire application is extremely lightweight and Pythonic, and only uses a couple non-native, lightweight libraries.
+It is possible to avoid importing PyTorch and Sentence Transformers if you write a new class in embedClass.py that matches the old one. For example, a class that gets embeddings from an LM Studio model, the OpenAI API, or the Gemini API are all totally possible. Similarly, new classes from different sources can be written for the OCR model, and the LLM model. Apart from the GUI, which uses PySide6, the entire application is extremely lightweight and Pythonic, and only uses a couple non-native, lightweight libraries (Pillow, Numpy, requests, watchdog).
 
 Increasing max_workers in config.json increases the number of threads available for doing tasks, making it possible to fully utilize a GPU to embed tens of thousands of files per hour. This is much, much faster than the single-threading, even if the batch size is high, and because of the SQL idempotency and the tasking system in orchestrator.py, it can be done with no risk of data loss or double-counting.
 
