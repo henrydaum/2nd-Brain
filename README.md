@@ -17,7 +17,7 @@ A background service that periodically captures your screen activity, extracts t
 * **How to use:** Right-click the **System Tray icon** and select **Start Screen Capture** (or toggle it in the Settings tab). The app will silently record your screen at the interval set in your config (default: 15s), and save the photos into a "Screenshots" Data folder, accessible in Settings. To automatically index the screenshots, add the path to this folder to your "Sync Directories", also in Settings. To run a search on this folder specifically, click on the filter button in the search bar and navigate to the folder, then do a normal search.
 
 ### Universal Indexing ◄ ►
-Parses and indexes a wide variety of formats including PDF, DOCX, PPTX, code files (`.py`, `.js`, etc.), images (`.png`, `.jpg`), and even Google Drive shortcuts (`.gdoc`) *(the full list is available below)*.
+Parses and indexes numerous folders with a wide variety of formats including PDF, DOCX, PPTX, code files (`.py`, `.js`, etc.), images (`.png`, `.jpg`), and even Google Drive shortcuts (`.gdoc`) *(the full list is available below)*.
 * **How to use:** Go to the **Settings** tab (or edit `config.json`) and add your desired folder paths to the `sync_directories` list, and add the extensions you want to `text_extensions` and `image_extensions`. Upon restart, the app will immediately begin scanning these locations for those extensions.
 
 ### Real-Time "Watchdog" ◄ ►
@@ -111,6 +111,7 @@ Increasing `max_workers` in `config.json` maximizes thread usage, enabling GPUs 
 ## License
 
 This project is licensed under the MIT License.
+
 
 
 
