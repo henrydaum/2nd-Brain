@@ -907,7 +907,11 @@ class MainWindow(QMainWindow):
         """
         self.tray_menu.setStyleSheet(custom_style)
         
-        show_action = QAction("Open 2nd Brain", self)
+        show_action = QAction("Open", self)
+        # Make it bold
+        font = QFont()
+        font.setBold(True)
+        show_action.setFont(font)
         show_action.triggered.connect(self.show)
 
         # Screenshotting software ("Windows Recall")
@@ -925,6 +929,9 @@ class MainWindow(QMainWindow):
         self.act_llm.triggered.connect(lambda: self.toggle_model('llm'))
 
         quit_action = QAction("Quit", self)
+        # Make it bold
+        show_action.setFont(font)
+        quit_action.setFont(font)
         quit_action.triggered.connect(QApplication.quit)
 
         self.tray_menu.addAction(show_action)
