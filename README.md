@@ -4,7 +4,7 @@
 
 <mark>Second Brain is a multimodal userspace operating system that transforms your static local storage into a high-performance, private general intelligence hub.</mark> Running quietly in your system tray, it uses robust multithreading and SQL to sync your files and screen history as they happen, creating a fully searchable on-device knowledge base.
 
-Powered by pre-loaded AI models, Second Brain delivers nearly instantaneous results using both keyword (content) and semantic (meaning) search. With support for over 49 text and image extensions and deep integration for vision-enabled LLMs, it ensures that your entire digital life is indexed, analyzed, and instantly accessible without ever touching the cloud.
+Powered by pre-loaded AI models, Second Brain delivers nearly instantaneous results using both keyword (content) and semantic (meaning) search. With support for over 49 text and image extensions and deep integration for vision-enabled LLMs, it gives you the power to index, analyze, and instantly access your digital world—augmenting your knowledge like a second brain.
 
 ## Features
 
@@ -111,5 +111,6 @@ Increasing `max_workers` in `config.json` maximizes thread usage, enabling GPUs 
 ## License
 
 This project is licensed under the MIT License.
+
 
 
