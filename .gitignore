@@ -1,0 +1,23 @@
+# Python cache (compiled code)
+__pycache__/
+*.pyc
+
+# Google Drive / Temp files
+.driveupload/
+.drivedownload/
+.tmp.driveupload/
+
+# User Data
+Screenshots/
+config.json
+search_history.csv
+
+# API Keys and Secrets
+token.json
+credentials.json
+client_secrets.json
+.env
+
+# Virtual Environment
+venv/
+env/
