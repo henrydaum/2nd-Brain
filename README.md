@@ -80,7 +80,7 @@ The application generates a config.json file in the %LOCALAPPDATA%/2nd Brain/ di
 | `llm_backend` | The service provider for the LLM analysis tasks. | `"LM Studio"`, `"OpenAI"` |
 | `lms_model_name` | The model identifier to request when connecting to a local LM Studio server. In order for this to work, LM Studio must be running in the background with the model with this name pre-downloaded. | String (e.g., `"gemma-3-4b-it"`) |
 | `openai_model_name` | The model identifier to use if OpenAI backend is selected. | String (e.g., `"gpt-4o"`, `"gpt-3.5-turbo"`) |
-| `use_drive` | Enables or disables the Google Drive API integration. | `true`, `false` |
+| `use_drive` | Enables or disables the Google Drive API integration. To download Google Drive files, you need to make a project in Google Cloud and get a credentials.json file. Place credentials.json in the local AppData folder (shortcut in Settings). | `true`, `false` |
 | `quality_weight` | How much the "Quality" score (gotten from the LLM) impacts the final ranking vs. the search match score. | Float `0.0` - `1.0` |
 | `mmr_lambda` | Controls diversity in results. Higher values prioritize relevance; lower values prioritize diversity. | Float `0.0` - `1.0` |
 | `mmr_alpha` | Controls the balance between Semantic (1.0) and Lexical (0.0) search results. | Float `0.0` - `1.0` |
@@ -111,6 +111,7 @@ Increasing `max_workers` in `config.json` maximizes thread usage, enabling GPUs 
 ## License
 
 This project is licensed under the MIT License.
+
 
 
 
