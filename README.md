@@ -27,7 +27,7 @@ This application indexes local files and screen activity to enable hybrid search
 ### Setup
 1. **Clone the repository:**
    ```bash
-   git clone [https://github.com/henrydaum/2nd-Brain.git](https://github.com/henrydaum/2nd-Brain.git)
+   git clone https://github.com/henrydaum/2nd-Brain.git
    cd 2nd-Brain
    ```
 2. **Create and activate a virtual environment:**
@@ -87,6 +87,7 @@ The application generates a config.json file in the %LOCALAPPDATA%/2nd Brain/ di
 ## License
 
 This project is licensed under the MIT License.
+
 
 
 
