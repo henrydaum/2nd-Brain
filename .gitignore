@@ -6,6 +6,7 @@ __pycache__/
 .driveupload/
 .drivedownload/
 .tmp.driveupload/
+.tmp.drivedownload/
 
 # User Data
 Screenshots/
