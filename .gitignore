@@ -10,6 +10,7 @@ __pycache__/
 
 # User Data
 Screenshots/
+Database/
 config.json
 search_history.csv
 
