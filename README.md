@@ -16,7 +16,7 @@ This application indexes local files and screen activity to enable hybrid search
 ## Screenshots
 
 <img width="1926" height="1260" alt="Screenshot 2025-12-19 130548" src="https://github.com/user-attachments/assets/4469f6c9-c2f0-41a7-b08e-4af07003435e" />
-<img width="567" height="582" alt="Screenshot 2025-12-19 131130" src="https://github.com/user-attachments/assets/a6068881-c96d-4259-9ece-67716a92d722" />
+<img width="397" height="407" alt="Screenshot 2025-12-19 131130" src="https://github.com/user-attachments/assets/a6068881-c96d-4259-9ece-67716a92d722" />
 
 ## Installation
 
@@ -26,7 +26,7 @@ This application indexes local files and screen activity to enable hybrid search
 
 ### Setup
 1. Clone the repository:
-  ```git clone [https://github.com/henrydaum/2nd-Brain.git](https://github.com/henrydaum/2nd-Brain.git)```
+  ```git clone https://github.com/henrydaum/2nd-Brain.git```
   ```cd 2nd-Brain```
 2. Create and activate a virtual environment:
   ```python -m venv venv```
@@ -40,23 +40,44 @@ This application indexes local files and screen activity to enable hybrid search
 
 The application generates a config.json file in the %LOCALAPPDATA%/2nd Brain/ directory upon the first run. You can modify this file directly or use the Settings tab in the interface.
 
-Key configuration options:
-- ```sync_directories```: A list of file paths to index.
-- ```screenshot_interval```: Time in seconds between screen captures (Default: 15).
-- ```delete_screenshots_after```: Retention period for screenshots in days.
-- ```llm_backend```: Select between "LM Studio" (local) or "OpenAI".
-- ```use_drive```: Boolean to enable or disable Google Drive indexing.
+| Setting | Description | Valid Inputs |
+| :--- | :--- | :--- |
+| `sync_directories` | A list of local folder paths or drive letters to monitor and index. | List of strings (e.g., `["C:\\Users\\..."]`) |
+| `batch_size` | The number of files to process simultaneously for embeddings. | Integer (e.g., `8`, `16`, `32`) |
+| `chunk_size` | The maximum number of characters per text chunk when splitting documents (not tokens). | Integer (e.g., `512`, `1024`) |
+| `chunk_overlap` | The number of characters to overlap between text chunks to preserve context (not tokens). | Integer (e.g., `64`, `128`) |
+| `flush_timeout` | Time in seconds to wait before forcing a batch to process, even if incomplete. | Float (e.g., `5.0`) |
+| `max_workers` | The maximum number of background threads used by the Orchestrator. | Integer (e.g., `4`, `6`) |
+| `ocr_backend` | The OCR engine to use. Currently, only the native Windows 10/11 engine is fully implemented. | `"Windows"` |
+| `embed_backend` | The source used for generating vector embeddings. | `"Sentence Transformers"` |
+| `text_model_name` | The HuggingFace model ID used for embedding text documents. | String (e.g., `"BAAI/bge-small-en-v1.5"`) |
+| `image_model_name` | The CLIP model used for embedding images. | String (e.g., `"clip-ViT-B-32"`) |
+| `llm_backend` | The service provider for the LLM analysis tasks. | `"LM Studio"`, `"OpenAI"` |
+| `lms_model_name` | The model identifier to request when connecting to a local LM Studio server. | String (e.g., `"gemma-3-4b-it"`) |
+| `openai_model_name` | The model identifier to use if OpenAI backend is selected. | String (e.g., `"gpt-4o"`, `"gpt-3.5-turbo"`) |
+| `use_drive` | Enables or disables the Google Drive API integration. | `true`, `false` |
+| `quality_weight` | How much the "Quality" score (gotten from the LLM) impacts the final ranking vs. the search match score. | Float `0.0` - `1.0` |
+| `mmr_lambda` | Controls diversity in results. Higher values prioritize relevance; lower values prioritize diversity. | Float `0.0` - `1.0` |
+| `mmr_alpha` | Controls the balance between Semantic (1.0) and Lexical (0.0) search results. | Float `0.0` - `1.0` |
+| `num_results` | The maximum number of search results to display. | Integer (e.g., `20`, `50`) |
+| `text_extensions` | File extensions treated as text documents. Every extension written here must have a parser in Parsers.py. | List of strings (e.g., `[".md", ".txt"]`) |
+| `image_extensions` | File extensions treated as images. Every extension written here must have a parser in Parsers.py. | List of strings (e.g., `[".png", ".jpg"]`) |
+| `use_cuda` | Enables GPU acceleration for embeddings/OCR if available. | `true`, `false` |
+| `screenshot_interval`| The delay in seconds between automatic screen captures. | Integer (e.g., `15`, `60`) |
+| `screenshot_folder` | Custom path to save screenshots. If empty, defaults to internal AppData folder. | String (Path) or `""` |
+| `delete_screenshots_after` | The number of days to retain screenshots before auto-deletion. | Integer (e.g., `7`, `30`) |
 
 ## Architecture
 
-- **main.pyw**: Application entry point. Handles initialization of the database, configuration loading, and service startup.
+- **main.pyw**: Application entry point. Handles initialization of the database, configuration loading, and model initialization.
 - **gui.py**: The frontend interface built with PySide6. Manages user interaction and displays search results.
 - **orchestrator.py**: Manages background tasks. Uses a priority queue and thread pool to handle OCR, embedding generation, and LLM analysis without blocking the UI.
-- **database.py**: Handles all SQLite interactions. Manages the tasks table for file tracking, embeddings for vector storage, and a virtual table for full-text search.
-- **watcher.py**: Implements watchdog observers to detect file system events and submit tasks to the orchestrator.
-- **search.py**: Contains logic for lexical, semantic, and hybrid search algorithms, including MMR reranking.
+- **database.py**: Handles all SQLite interactions. Manages the tasks table for file tracking, embeddings for vector storage, and a virtual table for lexical search.
+- **watcher.py**: Implements watchdog observers to detect file system events and submit tasks to the orchestrator, enabling live sync.
+- **search.py**: Contains logic for the hybrid lexical/semantic search algorithm, including MMR reranking.
 
 ## License
 
 This project is licensed under the MIT License.
+
 
