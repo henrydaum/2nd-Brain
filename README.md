@@ -54,7 +54,7 @@ When the LLM is loaded, it will automatically give a rating to every file in you
    ```bash
    pip install -r requirements.txt
    ```
-   NOTE: this installs PyTorch as ```torch```, which is the CPU-only version. If you want to use GPU, you will need to install PyTorch manually based on your CUDA Toolkit version at [https://pytorch.org/get-started/locally/](https://pytorch.org/get-started/locally/).
+   NOTE: this installs PyTorch as ```torch```, which is the CPU-only version. If you want to use GPU, you will need to install PyTorch manually based on your CUDA Toolkit version: [https://pytorch.org/get-started/locally/](https://pytorch.org/get-started/locally/).
    
 5. **Run the application:**
    ```bash
@@ -111,6 +111,7 @@ Increasing `max_workers` in `config.json` maximizes thread usage, enabling GPUs 
 ## License
 
 This project is licensed under the MIT License.
+
 
 
 
