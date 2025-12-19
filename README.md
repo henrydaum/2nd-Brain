@@ -74,7 +74,7 @@ The application generates a config.json file in the %LOCALAPPDATA%/2nd Brain/ di
 | `flush_timeout` | Time in seconds to wait before forcing a batch to process, even if incomplete. | Float (e.g., `5.0`) |
 | `max_workers` | The maximum number of background threads used by the Orchestrator. Use the maximum your computer can handle. | Integer (e.g., `4`, `6`, `12`) |
 | `ocr_backend` | The OCR engine to use. Currently, only the native Windows 10/11 engine is fully implemented. | `"Windows"` |
-| `embed_backend` | The source used for generating vector embeddings. | `"Sentence Transformers"` |
+| `embed_backend` | The source used for generating vector embeddings. Right now, there is only one source implemented. | `"Sentence Transformers"` |
 | `text_model_name` | The HuggingFace model ID used for embedding text documents. | String (e.g., `"BAAI/bge-small-en-v1.5"`) |
 | `image_model_name` | The CLIP model used for embedding images. | String (e.g., `"clip-ViT-B-32"`) |
 | `llm_backend` | The service provider for the LLM analysis tasks. | `"LM Studio"`, `"OpenAI"` |
@@ -111,6 +111,7 @@ Increasing `max_workers` in `config.json` maximizes thread usage, enabling GPUs 
 ## License
 
 This project is licensed under the MIT License.
+
 
 
 
