@@ -11,6 +11,11 @@ import requests
 
 logger = logging.getLogger("Parsers")
 
+# ALL VALID IMAGE EXTENSIONS:
+# [".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".heif", ".tif", ".tiff", ".bmp", ".ico"]
+# ALL VALID TEXT EXTENSIONS:
+# [".txt", ".md", ".pdf", ".docx", ".doc", ".gdoc", ".rtf", ".pptx", ".csv", ".xlsx", ".xls", ".json", ".yaml", ".yml", ".xml", ".ini", ".toml", ".env", ".py", ".js", ".jsx", ".ts", ".tsx", ".html", ".css", ".c", ".cpp", ".h", ".java", ".cs", ".php", ".rb", ".go", ".rs", ".sql", ".sh", ".bat", ".ps1"]
+
 # --- OPTIONAL IMPORTS (Soft Dependencies) ---
 try:
     from docx import Document

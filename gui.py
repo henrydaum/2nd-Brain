@@ -7,6 +7,7 @@ import threading
 import subprocess
 import json
 import ast
+from collections import deque
 # Internal
 from guiWorkers import SearchWorker, StatsWorker, ModelToggleWorker, DatabaseActionWorker, record_search_history
 from Parsers import get_drive_service
@@ -194,6 +195,15 @@ class MainWindow(QMainWindow):
         self.setup_ui()
         self.setup_tray()
 
+        self.konami_code = [
+            Qt.Key_Up.value, Qt.Key_Up.value, Qt.Key_Down.value, Qt.Key_Down.value,
+            Qt.Key_Left.value, Qt.Key_Right.value, Qt.Key_Left.value, Qt.Key_Right.value,
+            Qt.Key_B.value, Qt.Key_A.value
+        ]
+        self.key_history = deque(maxlen=len(self.konami_code))
+        self.last_key_time = 0  # Cooldown tracking
+        QApplication.instance().installEventFilter(self)
+
         # --- Configure Logging ---
         self.log_signal.connect(self.display_log_message_safe)
         self.log_handler = GuiLogHandler(self.log_signal.emit)
@@ -333,7 +343,6 @@ class MainWindow(QMainWindow):
         self.search_input.textChanged.connect(self.adjust_search_input_height)
         self.search_input.setFixedHeight(doc_height + (self.search_input_vertical_padding * 2) + 3)  # adjust +4 so it doesn't wiggle on start
         self.search_input.setFixedWidth(self.search_input.width())
-        self.search_input.installEventFilter(self)
         self.search_input.setStyleSheet("border: none;")
         self.search_input.setStyleSheet("""
             QTextEdit {
@@ -651,16 +660,32 @@ class MainWindow(QMainWindow):
         self.search_input.setFixedHeight(final_height)
 
     def eventFilter(self, obj, event):
-        if obj is self.search_input and event.type() == QEvent.KeyPress:
+        # Konami Code - track last 10 keys
+        if event.type() == QEvent.KeyPress:
+            # Ignore auto-repeat events (when keys are held down)
+            if event.isAutoRepeat():
+                return super().eventFilter(obj, event)
+            
+            # Apply 0.05 second cooldown to avoid duplicate processing
+            current_time = time.time()
+            if current_time - self.last_key_time < 0.05:
+                return super().eventFilter(obj, event)
+            
+            self.last_key_time = current_time
             key = event.key()
-            modifiers = event.modifiers()
-            if key == Qt.Key_Return or key == Qt.Key_Enter:
-                if modifiers == Qt.ShiftModifier:
-                    return super().eventFilter(obj, event)
-                else:
-                    self.run_search()
-                    return True
+            # Add to history
+            self.key_history.append(key)
+            
+            # Check if last N keys match the konami code
+            if list(self.key_history) == self.konami_code:
+                self.trigger_secret()
+                self.key_history.clear()
+
         return super().eventFilter(obj, event)
+
+    def trigger_secret(self):
+        logger.info("!! SECRET ACTIVATED !!")
+        self.status_bar.showMessage("👁️👁️👁️👁️👁️👁️👁️👁️👁️👁️👁️👁️👁️👁️👁️👁️👁️", 10000)
 
     def create_file_cell_widget(self, name_text, path_text):
         """Creates a custom widget with Name (top) and Path (bottom/italic)"""
