@@ -104,15 +104,12 @@ The application generates a config.json file in the %LOCALAPPDATA%/2nd Brain/ di
 - **search.py**: Contains logic for the hybrid lexical/semantic search algorithm, including MMR reranking.
 
 ## Technical Notes
-It is possible to avoid importing PyTorch and Sentence Transformers if you write a new class in embedClass.py that matches the old one. For example, a class that gets embeddings from an LM Studio model, the OpenAI API, or the Gemini API are all totally possible. Similarly, new classes from different sources can be written for the OCR model, and the LLM model. Apart from the GUI, which uses PySide6, the entire application is extremely lightweight and Pythonic, and only uses a couple non-native, lightweight libraries (Pillow, Numpy, requests, watchdog).
+You can avoid importing PyTorch and Sentence Transformers by creating a compatible class in `embedClass.py` for embeddings from LM Studio, OpenAI, or Gemini APIs. Similarly, new classes can be created for different OCR or LLM models. 
 
-Increasing max_workers in config.json increases the number of threads available for doing tasks, making it possible to fully utilize a GPU to embed tens of thousands of files per hour. This is much, much faster than the single-threading, even if the batch size is high, and because of the SQL idempotency and the tasking system in orchestrator.py, it can be done with no risk of data loss or double-counting.
+Aside from the PySide6-based GUI, the application is lightweight and primarily uses Python-native libraries, with a few exceptions like Pillow, Numpy, requests, and watchdog. This makes it easy to maintain.
+
+Increasing `max_workers` in `config.json` maximizes thread usage, enabling GPUs to process embeddings for tens of thousands of files per hour. This multithreading, combined with `orchestrator.py`'s SQL idempotency, ensures speedy processing without data loss or redundancy.
 
 ## License
 
 This project is licensed under the MIT License.
-
-
-
-
-
