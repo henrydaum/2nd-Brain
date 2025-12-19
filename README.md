@@ -31,7 +31,7 @@ This application indexes local files and screen activity to enable hybrid search
 4. Run the application:
   ```python main.pyw```
 
-### Configuration
+## Configuration
 The application generates a config.json file in the %LOCALAPPDATA%/2nd Brain/ directory upon the first run. You can modify this file directly or use the Settings tab in the interface.
 
 Key configuration options:
@@ -41,7 +41,7 @@ Key configuration options:
 - ```llm_backend```: Select between "LM Studio" (local) or "OpenAI".
 - ```use_drive```: Boolean to enable or disable Google Drive indexing.
 
-### Architecture
+## Architecture
 - **main.pyw**: Application entry point. Handles initialization of the database, configuration loading, and service startup.
 - **gui.py**: The frontend interface built with PySide6. Manages user interaction and displays search results.
 - **orchestrator.py**: Manages background tasks. Uses a priority queue and thread pool to handle OCR, embedding generation, and LLM analysis without blocking the UI.
