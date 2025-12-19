@@ -25,7 +25,7 @@ The system monitors your folders for changes. If you add, delete, or edit a file
 * **How to use:** Fully automatic. As long as the application is running (even in the tray), your index remains up to date. If the OCR, Embedding, or LLM models are loaded, they will automatically process the files to enable search. You can add or remove folders and extensions as needed.
 
 ### Bot Analysis
-When the LLM is loaded, it will automatically rate every file in your database on a scale from 0.0 to 1.0 based on the overall quality. Files with higher scores are boosted in the search algorithm.
+When the LLM is loaded, it will automatically give a rating to every file in your database. This rating is based on the overall quality. Files with higher scores are then boosted in the search algorithm, ensuring results are of the highest quality.
 * **How to use:** Happens automatically if the LLM is loaded. In order to rate images, load a vision-enabled model, like Gemma 3 or GPT 4.1. AI models can be loaded locally using LM Studio or in the cloud using the OpenAI API (requires key).
 
 ## Screenshots
@@ -111,6 +111,7 @@ Increasing `max_workers` in `config.json` maximizes thread usage, enabling GPUs 
 ## License
 
 This project is licensed under the MIT License.
+
 
 
 
