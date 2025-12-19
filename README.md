@@ -2,16 +2,33 @@
 
 # Second Brain
 
-This application indexes local files and screen activity to enable hybrid search (keyword and semantic) over large, sprawling databases. All processing, including embeddings, OCR, and LLM analysis, can be performed locally on-device, ensuring privacy.
-The application lives in the system tray and syncs with disc changes in the background, enabling instant access in the search tool. By keeping models loaded in the background, it takes as few as 3 clicks and a few seconds to complete a search.
+**A privacy-first, fully local AI search engine and photographic memory for your digital life.**
+
+Second Brain transforms your local files and screen history into a searchable knowledge base. Unlike cloud services, it runs 100% on your device, using local AI to index documents by both their content (keywords) and their meaning (semantic context).
+
+It lives quietly in your system tray, syncing with your files in real-time. Whether you need to find a document from last year or a recipe you looked at on your screen ten minutes ago, Second Brain finds it in seconds.
 
 ## Features
 
-- **Hybrid Search**: Utilizes SQLite FTS5 for lexical search and SentenceTransformers for semantic search, allowing retrieval by file content or meaning.
-- **Passive Screen Capture**: An optional background service that captures screen activity at configurable intervals. Images are processed via OCR to make visual history text-searchable.
-- **Universal Indexing**: Supports parsing and indexing of PDF, DOCX, PPTX, text/code files, images, and Google Drive shortcuts (.gdoc).
-- **Local Architecture**: Built on SQLite and local Python libraries. No external telemetry or cloud storage is required.
-- **Real-Time Monitoring**: Monitors configured directories for file changes, additions, or deletions and updates the index dynamically.
+### Hybrid Search
+Combines **Lexical Search** (exact keyword matching via SQLite FTS5) with **Semantic Search** (meaning-based matching via SentenceTransformers). This allows you to find "that invoice from last week" even if you don't remember the file name.
+* **How to use:** Type naturally into the search bar. You can use specific keywords (e.g., `invoice_2024.pdf`) or natural language descriptions (e.g., `"the blue logo design we rejected"`). Your data must be processed using OCR and embedding models to be available for search. Semantic search requires that embedding models are loaded. Lexical search is possible without embedding models loaded.
+
+### "The Lens" (Passive Screen Capture)
+A background service that periodically captures your screen activity, extracts text using Windows native OCR, and creates a searchable timeline of your digital day.
+* **How to use:** Right-click the **System Tray icon** and select **Start Screen Capture** (or toggle it in the Settings tab). The app will silently record your screen at the interval set in your config (default: 15s), and save the photos into a "Screenshots" Data folder, accessible in Settings. To automatically index the screenshots, add the path to this folder to your "Sync Directories", also in Settings. By default, the hybrid search will be for all sync directories; to make the search for screenshots in this folder specifically, click on the filter button in the search bar and navigate to the folder.
+
+### Universal Indexing
+Parses and indexes a wide variety of formats including PDF, DOCX, PPTX, code files (`.py`, `.js`, etc.), images (`.png`, `.jpg`), and even Google Drive shortcuts (`.gdoc`) *(the full list is available below)*.
+* **How to use:** Go to the **Settings** tab (or edit `config.json`) and add your desired folder paths to the `sync_directories` list, and add the extensions you want to `text_extensions` and `image_extensions`. Upon restart, the app will immediately begin scanning these locations for those extensions.
+
+### Real-Time "Watchdog"
+The system monitors your folders for changes. If you add, delete, or edit a file, the index updates instantly without requiring a full manual rescan.
+* **How to use:** Fully automatic. As long as the application is running (even in the tray), your index remains up to date. If the OCR, Embedding, or LLM models are loaded, they will automatically process the files to enable search.
+
+### AI Critic
+When the LLM is loaded, it will automatically give every file in your database a score from 0.0 to 1.0. Files with higher scores are boosted in the search algorithm.
+* **How to use:** Happens automatically if the LLM is loaded. In order to rate images, load a vision-enabled model, like Gemma 3 or GPT 4.1. AI models can be loaded locally using LM Studio or in the cloud using the OpenAI API (requires key).
 
 ## Screenshots
 
@@ -94,3 +111,4 @@ Increasing max_workers in config.json increases the number of threads available 
 ## License
 
 This project is licensed under the MIT License.
+
