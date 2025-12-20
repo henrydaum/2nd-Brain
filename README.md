@@ -1,6 +1,6 @@
 <img width="2481" height="3508" alt="second brain final (image)" src="https://github.com/user-attachments/assets/33c859c1-52da-457c-ab24-7fca065796f7" />
 
-This is an improved version of a program I was working on before, which you can see here: [github.com/henrydaum/second-brain](https://github.com/henrydaum/second-brain), and here: [henrydaum.site](henrydaum.site). This version is more than 6x faster, is more maintainable, and has other great features.
+Compared to my old version, [github.com/henrydaum/second-brain](https://github.com/henrydaum/second-brain) and [henrydaum.site](henrydaum.site), this version is more than 6x faster, is more maintainable, and has other great features.
 
 # Second Brain
 
@@ -117,6 +117,7 @@ In order to enable RAG, I plan to expose an API endpoint for the search algorith
 ## License
 
 This project is licensed under the MIT License.
+
 
 
 
