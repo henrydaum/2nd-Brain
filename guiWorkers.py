@@ -13,7 +13,7 @@ from PySide6.QtGui import QImage, QImageReader
 # Register HEIC opener
 pillow_heif.register_heif_opener()
 
-logger = logging.getLogger("WORKERS")
+logger = logging.getLogger("GUIWorkers")
 
 BASE_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = Path(os.getenv('LOCALAPPDATA')) / "2nd Brain"
@@ -63,20 +63,24 @@ class SearchWorker(QThread):
     image_stream = Signal(dict, QImage)
     finished = Signal()
 
-    def __init__(self, engine, query, filter_folder):
+    def __init__(self, engine, searchfacts, filter_folder):
         super().__init__()
         self.engine = engine
-        self.query = query
+        self.searchfacts = searchfacts
         self._is_running = True
         self.filter_folder = filter_folder
 
     def run(self):
         if not self._is_running: return
-        text_res = self.engine.hybrid_search(self.query, "text", top_k=30, folder_path=self.filter_folder)
+        text_res = self.engine.hybrid_search(self.searchfacts.query, "text", top_k=30, folder_path=self.filter_folder)
         self.text_ready.emit(text_res)
+
+        self.searchfacts.text_search_results = text_res
         
         if not self._is_running: return
-        image_res = self.engine.hybrid_search(self.query, "image", top_k=30, folder_path=self.filter_folder)
+        image_res = self.engine.hybrid_search(self.searchfacts.query, "image", top_k=30, folder_path=self.filter_folder)
+
+        self.searchfacts.image_search_results = image_res
         
         for item in image_res:
             if not self._is_running: break
@@ -85,6 +89,40 @@ class SearchWorker(QThread):
             self.image_stream.emit(item, qimg)
             
         self.finished.emit()
+
+class LLMWorker(QThread):
+    chunk_ready = Signal(str) # Signal to send text back to GUI
+    finished = Signal()
+
+    def __init__(self, llm_model, searchfacts, temperature=0.7):
+        super().__init__()
+        self.llm = llm_model
+        self.searchfacts = searchfacts
+        self.temperature = temperature
+        self._is_running = True
+
+    def run(self):
+        logger.info("Starting LLM response.")
+        if not self.llm or not self.llm.loaded:
+            # self.chunk_ready.emit("")
+            self.finished.emit()
+            return
+
+        try:
+            # Iterate over the stream generator from your llmClass
+            for chunk in self.llm.stream(self.searchfacts.final_prompt, self.temperature):
+                if not self._is_running: 
+                    break
+                # Emit the chunk to the main thread
+                self.chunk_ready.emit(chunk)
+            logger.info(f"LLM response completed")
+        except Exception as e:
+            self.chunk_ready.emit(f"\n[System] Error during generation: {e}")
+        finally:
+            self.finished.emit()
+
+    def stop(self):
+        self._is_running = False
 
 class StatsWorker(QThread):
     stats_updated = Signal(dict, int)

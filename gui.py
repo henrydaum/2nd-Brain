@@ -9,8 +9,9 @@ import json
 import ast
 from collections import deque
 # Internal
-from guiWorkers import SearchWorker, StatsWorker, ModelToggleWorker, DatabaseActionWorker, record_search_history
+from guiWorkers import SearchWorker, StatsWorker, ModelToggleWorker, DatabaseActionWorker, LLMWorker, record_search_history
 from Parsers import get_drive_service
+from searchCoordinator import SearchFacts, Prompter
 # Qt
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -19,8 +20,9 @@ from PySide6.QtWidgets import (
     QLabel, QFrame, QAbstractItemView, QTabWidget, QStatusBar, QLineEdit, QScrollArea, QDialog, QTextBrowser, QFileDialog
 )
 from PySide6.QtCore import Qt, QSize, Signal, Slot, QEvent
-from PySide6.QtGui import QIcon, QPixmap, QFont, QColor, QBrush, QAction, QImage
+from PySide6.QtGui import QIcon, QPixmap, QFont, QColor, QBrush, QAction, QImage, QTextCursor
 import qtawesome as qta
+import markdown
 
 logger = logging.getLogger("GUI")
 
@@ -520,9 +522,26 @@ class MainWindow(QMainWindow):
         img_layout.setContentsMargins(35, 0, 0, 0)  # L, T, R, Bottom
         img_layout.addWidget(self.image_list)
 
+        # TEXT AREA FOR LLM OUTPUT TAB
+        self.rag_page = QWidget()
+        rag_layout = QVBoxLayout(self.rag_page)
+        self.llm_output = QTextBrowser()
+        self.llm_output.setOpenExternalLinks(True)
+        self.llm_output.setPlaceholderText(" ")
+        self.llm_output.setStyleSheet(f"""
+            QTextBrowser {{
+                background-color: {BG_DARK};
+                border: none;
+                padding: 15px;
+                color: {ACCENT_COLOR};
+            }}
+        """)
+        rag_layout.addWidget(self.llm_output, 1)
+
         # ADD THE WRAPPERS TO THE TABS (Instead of the raw widgets)
         self.results_tabs.addTab(self.tab_doc_container, "Documents")
         self.results_tabs.addTab(self.tab_img_container, "Images")
+        self.results_tabs.addTab(self.rag_page, "RAG")
         search_layout.addWidget(self.results_tabs, 1)
         
     # SETTINGS PAGE
@@ -858,7 +877,15 @@ class MainWindow(QMainWindow):
 
     def run_search(self):
         query = self.search_input.toPlainText().strip()
-        if not query: return
+        if not query and not self.attached_file_path:
+            # Give user the ability to get a clear slate, optional feature might remove
+            self.doc_table.setRowCount(0)
+            self.image_list.clear()
+            self.llm_output.clear()
+            return
+
+        # Initialize data class to coordinate critical search information
+        searchfacts = SearchFacts(query=query, attachment_path=self.attached_file_path)
 
         # 0. Log the query to search history
         threading.Thread(target=record_search_history, args=(query,), daemon=True).start()
@@ -873,9 +900,10 @@ class MainWindow(QMainWindow):
         self.btn_send.setIcon(self.send_spin_icon)
         self.doc_table.setRowCount(0)
         self.image_list.clear()
+        self.llm_output.clear()
 
         # 3. Start Streaming Worker
-        worker = SearchWorker(self.search_engine, query, self.search_filter)
+        worker = SearchWorker(self.search_engine, searchfacts, self.search_filter)
         
         # Connect the split signals
         worker.text_ready.connect(self.on_text_ready)
@@ -884,6 +912,7 @@ class MainWindow(QMainWindow):
         # Cleanup when totally done
         worker.finished.connect(lambda: self.btn_send.setIcon(self.send_icon))
         worker.finished.connect(lambda: self.cleanup_worker(worker))
+        worker.finished.connect(lambda: self.start_rag_generation(searchfacts))  # Start RAG after search completes, because the data is needed for context
         
         self.workers.append(worker)
         worker.start()
@@ -934,6 +963,44 @@ class MainWindow(QMainWindow):
             
         except Exception as e: 
             logger.error(f"Error displaying stream image: {e}")
+
+    # 1. Trigger the RAG Process
+    def start_rag_generation(self, searchfacts):
+        # A. Stop any existing LLM generation
+        if self.workers:
+            for w in self.workers:
+                if isinstance(w, LLMWorker) and w.isRunning():
+                    w.stop()
+
+        # B. Clear Output
+        self.accumulated_markdown = ""
+
+        # C. Construct Prompt
+        
+        # For now, here is a placeholder prompt using your attached file if it exists
+        context_str = ""
+        if self.attached_file_path:
+            context_str = f"Context File: {self.attached_file_path}\n"
+        
+        searchfacts.final_prompt = f"Context:\n{context_str}\n\nUser Question: {query}"
+
+        # D. Start the Worker
+        worker = LLMWorker(self.models['llm'], searchfacts)
+        
+        worker.chunk_ready.connect(self.update_llm_output)
+        worker.finished.connect(lambda: self.cleanup_worker(worker))
+        
+        self.workers.append(worker)
+        worker.start()
+
+    # 2. Handle the Stream (The Slot)
+    @Slot(str)
+    def update_llm_output(self, chunk):
+        if not chunk: return
+        self.accumulated_markdown += chunk
+        html = markdown.markdown(self.accumulated_markdown)
+        self.llm_output.setHtml(html)
+        self.llm_output.ensureCursorVisible()
 
     # --- MODEL & TRAY LOGIC ---
 
