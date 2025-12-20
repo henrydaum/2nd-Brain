@@ -912,7 +912,8 @@ class MainWindow(QMainWindow):
         # Cleanup when totally done
         worker.finished.connect(lambda: self.btn_send.setIcon(self.send_icon))
         worker.finished.connect(lambda: self.cleanup_worker(worker))
-        worker.finished.connect(lambda: self.start_rag_generation(searchfacts))  # Start RAG after search completes, because the data is needed for context
+        if self.models['llm'].loaded:
+            worker.finished.connect(lambda: self.start_rag_generation(searchfacts))  # Start RAG after search completes, because the data is needed for context
         
         self.workers.append(worker)
         worker.start()
@@ -975,17 +976,8 @@ class MainWindow(QMainWindow):
         # B. Clear Output
         self.accumulated_markdown = ""
 
-        # C. Construct Prompt
-        
-        # For now, here is a placeholder prompt using your attached file if it exists
-        context_str = ""
-        if self.attached_file_path:
-            context_str = f"Context File: {self.attached_file_path}\n"
-        
-        searchfacts.final_prompt = f"Context:\n{context_str}\n\nUser Question: {query}"
-
-        # D. Start the Worker
-        worker = LLMWorker(self.models['llm'], searchfacts)
+        # C. Start the Worker
+        worker = LLMWorker(self.models['llm'], searchfacts, self.config)
         
         worker.chunk_ready.connect(self.update_llm_output)
         worker.finished.connect(lambda: self.cleanup_worker(worker))

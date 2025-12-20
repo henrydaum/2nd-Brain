@@ -9,6 +9,8 @@ from PIL import Image, ImageGrab
 import pillow_heif
 from PySide6.QtCore import QThread, Signal, QSize, Qt
 from PySide6.QtGui import QImage, QImageReader
+# Internal
+from searchCoordinator import Prompter
 
 # Register HEIC opener
 pillow_heif.register_heif_opener()
@@ -94,14 +96,37 @@ class LLMWorker(QThread):
     chunk_ready = Signal(str) # Signal to send text back to GUI
     finished = Signal()
 
-    def __init__(self, llm_model, searchfacts, temperature=0.7):
+    def __init__(self, llm_model, searchfacts, config):
         super().__init__()
+        self.temperature = config['temperature']
+        self.top_n = config['top_n_llm']  # Number of top results to show LLM
         self.llm = llm_model
         self.searchfacts = searchfacts
-        self.temperature = temperature
+        self.config = config
         self._is_running = True
 
     def run(self):
+        # Assemble the final prompt from SearchFacts
+        query = f"USER'S QUERY:\n'{self.searchfacts.query}'" if self.searchfacts.query else "USER'S QUERY: The user did not provide a specific prompt; focus on their attachment.\n"
+
+        self.searchfacts.attachment_context_string = Path(self.searchfacts.attachment_path).name if self.searchfacts.attachment_path else ""
+        
+        attachment_context = f"CONTEXT FROM ATTACHMENT:\n{self.searchfacts.attachment_context_string}\n" if self.searchfacts.attachment_context_string else ""
+        
+        relevant_chunks = [r['content'][:1000] for r in self.searchfacts.text_search_results[:self.top_n]]
+        
+        joiner_string = "\n---\n"
+        
+        formatted_chunks = f"{joiner_string.join(relevant_chunks)}" if relevant_chunks else "No text results found; focus on the images."
+        
+        self.searchfacts.final_prompt = Prompter(config=self.config).rag_prompt.format(
+            query=query,
+            attachment_context=attachment_context,
+            database_results=formatted_chunks)
+
+        image_paths = [r['path'] for r in self.searchfacts.image_search_results[:self.top_n]]
+    
+        # Run the LLM with the final prompt
         logger.info("Starting LLM response.")
         if not self.llm or not self.llm.loaded:
             # self.chunk_ready.emit("")
@@ -110,7 +135,11 @@ class LLMWorker(QThread):
 
         try:
             # Iterate over the stream generator from your llmClass
-            for chunk in self.llm.stream(self.searchfacts.final_prompt, self.temperature):
+            for chunk in self.llm.stream(
+                prompt=self.searchfacts.final_prompt, 
+                image_paths=image_paths, 
+                temperature=self.temperature
+                ):
                 if not self._is_running: 
                     break
                 # Emit the chunk to the main thread

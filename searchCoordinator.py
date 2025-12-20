@@ -56,14 +56,14 @@ class Prompter:
     """Manages the creation of all complex LLM prompts."""
     def __init__(self, config: dict):
         # 1. Prepare the common variable
-        system_prompt = config['system_prompt'] + config.get('special_instructions', 'None')
+        system_prompt = config['system_prompt']
         
         # 2. Define the partial context once
         partials = {"system_prompt": system_prompt}
 
         # 3. Create the templates
         # Assumes your config strings use Python's standard {variable} syntax
-        self.synthesize_results = SimpleTemplate(
-            config['synthesize_results_prompt'], 
+        self.rag_prompt = SimpleTemplate(
+            "{system_prompt}\n\n{query}\n{attachment_context}\n{database_results}\n**Your Task:**\nBased exclusively on the information provided above, write a concise and helpful response. Your primary goal is to synthesize the information to **guide the user towards what they want**.\n\n**Instructions:**\n- The text search results are **snippets** from larger documents and may be incomplete.\n- Do **not assume or guess** the author of a document unless the source text makes it absolutely clear.\n- The documents don't have timestamps; don't assume the age of a document unless the source text makes it absolutely clear.\n- Cite every piece of information you use from the search results with its source, like so: (source_name).\n- If the provided search results are not relevant to the user's request, state that you could not find any relevant information.\n- Use markdown formatting (e.g., bolding, bullet points) to make the response easy to read.\n- If there are images, make sure to consider them for your response.", 
             partial_vars=partials
         )

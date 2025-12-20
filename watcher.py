@@ -25,9 +25,9 @@ class FileWatcherService:
         self._known_mtimes = {}
         # These are all the valid extensions:
         self.image_extensions = config.get('image_extensions', [])
-        logger.info(f"Tracking image extensions: {self.image_extensions}")
+        # logger.info(f"Tracking image extensions: {self.image_extensions}")
         self.text_extensions = config.get('text_extensions', [])
-        logger.info(f"Tracking text extensions: {self.text_extensions}")
+        # logger.info(f"Tracking text extensions: {self.text_extensions}")
 
     def start(self):
         # Validate directories before starting
