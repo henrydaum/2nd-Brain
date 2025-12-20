@@ -4,13 +4,12 @@ import time
 import logging
 import csv
 from datetime import datetime
+from dataclasses import dataclass, field
 # 3rd Party
 from PIL import Image, ImageGrab
 import pillow_heif
 from PySide6.QtCore import QThread, Signal, QSize, Qt
 from PySide6.QtGui import QImage, QImageReader
-# Internal
-from searchCoordinator import Prompter
 
 # Register HEIC opener
 pillow_heif.register_heif_opener()
@@ -58,12 +57,22 @@ def load_qimage_from_path(path):
         logger.error(f"Thumbnail load failed for {path}: {e}")
         return None
 
+# --- DATACLASS FOR SEARCH ---
+
+@dataclass
+class SearchFacts:
+    """Holds all data for a single user request and its results."""
+    from typing import List, Optional, Any, Dict
+    query: str
+    attachment_path: Optional[Path] = None
+    image_search_results: List[Dict[str, Any]] = field(default_factory=list)
+    text_search_results: List[Dict[str, Any]] = field(default_factory=list)
+
 # --- WORKER THREADS ---
 
 class SearchWorker(QThread):
     text_ready = Signal(list)
     image_stream = Signal(dict, QImage)
-    finished = Signal()
 
     def __init__(self, engine, searchfacts, filter_folder):
         super().__init__()
@@ -89,8 +98,6 @@ class SearchWorker(QThread):
             qimg = load_qimage_from_path(item['path'])
             if qimg is None: qimg = QImage()
             self.image_stream.emit(item, qimg)
-            
-        self.finished.emit()
 
 class LLMWorker(QThread):
     chunk_ready = Signal(str) # Signal to send text back to GUI
@@ -99,7 +106,7 @@ class LLMWorker(QThread):
     def __init__(self, llm_model, searchfacts, config):
         super().__init__()
         self.temperature = config['temperature']
-        self.top_n = config['top_n_llm']  # Number of top results to show LLM
+        self.top_n = config['top_n_llm']  # Number of top results to show LLM |
         self.llm = llm_model
         self.searchfacts = searchfacts
         self.config = config
@@ -107,27 +114,24 @@ class LLMWorker(QThread):
 
     def run(self):
         # Assemble the final prompt from SearchFacts
-        query = f"USER'S QUERY:\n'{self.searchfacts.query}'" if self.searchfacts.query else "USER'S QUERY: The user did not provide a specific prompt; focus on their attachment.\n"
-
-        self.searchfacts.attachment_context_string = Path(self.searchfacts.attachment_path).name if self.searchfacts.attachment_path else ""
-        
-        attachment_context = f"CONTEXT FROM ATTACHMENT:\n{self.searchfacts.attachment_context_string}\n" if self.searchfacts.attachment_context_string else ""
-        
-        relevant_chunks = [r['content'][:1000] for r in self.searchfacts.text_search_results[:self.top_n]]
-        
-        joiner_string = "\n---\n"
-        
-        formatted_chunks = f"{joiner_string.join(relevant_chunks)}" if relevant_chunks else "No text results found; focus on the images."
-        
-        self.searchfacts.final_prompt = Prompter(config=self.config).rag_prompt.format(
-            query=query,
-            attachment_context=attachment_context,
-            database_results=formatted_chunks)
+        final_prompt = ""
+        final_prompt += f"USER'S SEARCH QUERY: '{self.searchfacts.query}'\n\n" if self.searchfacts.query else "no query\n\n"
+        final_prompt += "TEXT SEARCH RESULTS:\n"
+        for i, r in enumerate(self.searchfacts.text_search_results[:self.top_n]):
+            final_prompt += f"PATH: {r['path']} | SCORE: {r['score']:.2f} | CONTENT: {r['content']}\n\n"
+        final_prompt += "\n"
+        final_prompt += "IMAGE SEARCH RESULTS:\n"
+        for i, r in enumerate(self.searchfacts.image_search_results[:self.top_n]):
+            final_prompt += f"PATH: {r['path']} | SCORE: {r['score']:.2f} | CONTENT: {r['content']}\n\n"
+        final_prompt += "\n"
+        final_prompt += f"{self.config.get('system_prompt', '')}\n\n"
+        final_prompt += f"When you cite a search result, you MUST use Markdown link format: [filename.ext](full_file_path). This allows the user to click the citation to open the file.\n\n"
+        final_prompt += f"YOUR RESPONSE:\n"
 
         image_paths = [r['path'] for r in self.searchfacts.image_search_results[:self.top_n]]
     
         # Run the LLM with the final prompt
-        logger.info("Starting LLM response.")
+        logger.info("Starting LLM response")
         if not self.llm or not self.llm.loaded:
             # self.chunk_ready.emit("")
             self.finished.emit()
@@ -136,7 +140,7 @@ class LLMWorker(QThread):
         try:
             # Iterate over the stream generator from your llmClass
             for chunk in self.llm.stream(
-                prompt=self.searchfacts.final_prompt, 
+                prompt=final_prompt, 
                 image_paths=image_paths, 
                 temperature=self.temperature
                 ):
@@ -153,7 +157,7 @@ class LLMWorker(QThread):
     def stop(self):
         self._is_running = False
 
-class StatsWorker(QThread):
+class StatsWorker(QThread): 
     stats_updated = Signal(dict, int)
 
     def __init__(self, db):

@@ -15,6 +15,7 @@ from search import SearchEngine
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.getLogger("AsyncWebsocketHandler").setLevel(logging.ERROR)
 logger = logging.getLogger("Main")
 
 # BASE_DIR for immutable core information and DATA_DIR for mutable data

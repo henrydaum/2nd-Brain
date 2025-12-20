@@ -7,11 +7,12 @@ import threading
 import subprocess
 import json
 import ast
+import urllib.parse
+import re
 from collections import deque
 # Internal
-from guiWorkers import SearchWorker, StatsWorker, ModelToggleWorker, DatabaseActionWorker, LLMWorker, record_search_history
+from guiWorkers import SearchWorker, StatsWorker, ModelToggleWorker, DatabaseActionWorker, LLMWorker, record_search_history, SearchFacts
 from Parsers import get_drive_service
-from searchCoordinator import SearchFacts, Prompter
 # Qt
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -19,8 +20,8 @@ from PySide6.QtWidgets import (
     QListWidget, QListWidgetItem, QSystemTrayIcon, QMenu, QHeaderView,
     QLabel, QFrame, QAbstractItemView, QTabWidget, QStatusBar, QLineEdit, QScrollArea, QDialog, QTextBrowser, QFileDialog
 )
-from PySide6.QtCore import Qt, QSize, Signal, Slot, QEvent
-from PySide6.QtGui import QIcon, QPixmap, QFont, QColor, QBrush, QAction, QImage, QTextCursor
+from PySide6.QtCore import Qt, QSize, Signal, Slot, QEvent, QUrl
+from PySide6.QtGui import QIcon, QPixmap, QFont, QColor, QBrush, QAction, QImage, QTextCursor, QDesktopServices
 import qtawesome as qta
 import markdown
 
@@ -38,7 +39,6 @@ BG_LIGHT     = "#282c34"   # Sidebar/Header
 BG_MEDIUM    = "#23272d"
 BG_INPUT     = "#181a1f"
 TEXT_MAIN    = "#abb2bf"
-BORDER_RADIUS= "6px"
 OUTLINE      = "#3e4451"
 
 # --- LOGGING HANDLER ---
@@ -55,6 +55,35 @@ class GuiLogHandler(logging.Handler):
         msg = self.format(record)
         # Call the MainWindow method, which uses the signal for thread safety
         self.log_display_callback(msg)
+
+class FileLinkBrowser(QTextBrowser):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setOpenExternalLinks(False)
+        self.setOpenLinks(False)
+        self.anchorClicked.connect(self.handle_link)
+
+    def handle_link(self, url):
+        # 1. Get the path (Qt now handles the "file:///" parsing automatically)
+        if url.isLocalFile():
+            path = url.toLocalFile() # Returns e.g. "Z:/My Drive/File.txt"
+            
+            # 2. Normalize for Windows (Flip / back to \)
+            path = os.path.normpath(path) 
+
+            logger.info(f"Opening local file: {path}")
+            
+            if os.path.exists(path):
+                try:
+                    os.startfile(path)
+                except Exception as e:
+                    logger.error(f"Failed to open file: {e}")
+            else:
+                logger.warning(f"File not found: {path}")
+        
+        else:
+            # Handle actual web links (http://google.com)
+            QDesktopServices.openUrl(url)
 
 class ResultDetailsDialog(QDialog):
     def __init__(self, item_data, parent=None):
@@ -525,7 +554,7 @@ class MainWindow(QMainWindow):
         # TEXT AREA FOR LLM OUTPUT TAB
         self.rag_page = QWidget()
         rag_layout = QVBoxLayout(self.rag_page)
-        self.llm_output = QTextBrowser()
+        self.llm_output = FileLinkBrowser()
         self.llm_output.setOpenExternalLinks(True)
         self.llm_output.setPlaceholderText(" ")
         self.llm_output.setStyleSheet(f"""
@@ -533,7 +562,14 @@ class MainWindow(QMainWindow):
                 background-color: {BG_DARK};
                 border: none;
                 padding: 15px;
+                color: {TEXT_MAIN};
+            }}
+        """)
+        self.llm_output.document().setDefaultStyleSheet(f"""
+            a {{
                 color: {ACCENT_COLOR};
+                text-decoration: none;
+                font-weight: bold;
             }}
         """)
         rag_layout.addWidget(self.llm_output, 1)
@@ -541,7 +577,7 @@ class MainWindow(QMainWindow):
         # ADD THE WRAPPERS TO THE TABS (Instead of the raw widgets)
         self.results_tabs.addTab(self.tab_doc_container, "Documents")
         self.results_tabs.addTab(self.tab_img_container, "Images")
-        self.results_tabs.addTab(self.rag_page, "RAG")
+        self.results_tabs.addTab(self.rag_page, "AI Insights")
         search_layout.addWidget(self.results_tabs, 1)
         
     # SETTINGS PAGE
@@ -605,7 +641,7 @@ class MainWindow(QMainWindow):
         self.btn_embed_toggle = self.add_live_setting_row("Embeddings", "Load/Unload Embedding Models", 
                                   lambda: self.toggle_model('embed'), color=OUTLINE)
 
-        self.btn_llm_toggle = self.add_live_setting_row("Local LLM", "Load/Unload Chat Model", 
+        self.btn_llm_toggle = self.add_live_setting_row("Local LLM", "Load/Unload Chat Model, enables AI Insights",
                                   lambda: self.toggle_model('llm'), color=OUTLINE)
 
         self.btn_screenshotter_toggle = self.add_live_setting_row("Screen Capture", f"Start/Stop taking screenshots every {self.config.get('screenshot_interval', 'N')} seconds, deleted after {self.config.get('delete_screenshots_after', 'N')} days", 
@@ -910,11 +946,14 @@ class MainWindow(QMainWindow):
         worker.image_stream.connect(self.on_image_stream)
         
         # Cleanup when totally done
-        worker.finished.connect(lambda: self.btn_send.setIcon(self.send_icon))
         worker.finished.connect(lambda: self.cleanup_worker(worker))
         if self.models['llm'].loaded:
-            worker.finished.connect(lambda: self.start_rag_generation(searchfacts))  # Start RAG after search completes, because the data is needed for context
-        
+            # Start RAG after search completes, because the data is needed for context
+            worker.finished.connect(lambda: self.start_rag_generation(searchfacts))
+        else:
+            # If no LLM, reset the send button now
+            worker.finished.connect(lambda: self.btn_send.setIcon(self.send_icon))
+    
         self.workers.append(worker)
         worker.start()
 
@@ -981,6 +1020,7 @@ class MainWindow(QMainWindow):
         
         worker.chunk_ready.connect(self.update_llm_output)
         worker.finished.connect(lambda: self.cleanup_worker(worker))
+        worker.finished.connect(lambda: self.btn_send.setIcon(self.send_icon))
         
         self.workers.append(worker)
         worker.start()
@@ -990,9 +1030,42 @@ class MainWindow(QMainWindow):
     def update_llm_output(self, chunk):
         if not chunk: return
         self.accumulated_markdown += chunk
-        html = markdown.markdown(self.accumulated_markdown)
+        
+        # 1. Capture Scroll State BEFORE updating
+        sb = self.llm_output.verticalScrollBar()
+        # "At bottom" means we are within 10 pixels of the max scroll
+        was_at_bottom = sb.value() >= (sb.maximum() - 10)
+        previous_scroll_val = sb.value()
+
+        # --- HELPER: Convert Windows path to valid URI ---
+        def path_to_uri(match):
+            text = match.group(1)   
+            raw_path = match.group(2)
+            try:
+                path_obj = Path(raw_path)
+                if not path_obj.is_absolute():
+                     path_obj = path_obj.resolve()
+                uri = path_obj.as_uri()
+                return f"{text}({uri})"
+            except Exception:
+                return match.group(0)
+
+        # Regex to fix links
+        pat = r'(\[[^\]]*\])\(([^()]*(?:\([^()]*\)[^()]*)*)\)'
+        fixed_md = re.sub(pat, path_to_uri, self.accumulated_markdown)
+        
+        html = markdown.markdown(fixed_md)
+        
+        # 2. Update the Text
         self.llm_output.setHtml(html)
-        self.llm_output.ensureCursorVisible()
+        
+        # 3. Restore Scroll State (Smart Scroll)
+        if was_at_bottom:
+            # If we were at the bottom, keep auto-scrolling to show new text
+            sb.setValue(sb.maximum())
+        else:
+            # If we were reading earlier text, stay there (don't jump)
+            sb.setValue(previous_scroll_val)
 
     # --- MODEL & TRAY LOGIC ---
 
