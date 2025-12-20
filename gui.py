@@ -660,26 +660,31 @@ class MainWindow(QMainWindow):
         self.search_input.setFixedHeight(final_height)
 
     def eventFilter(self, obj, event):
-        # Konami Code - track last 10 keys
+        # Konami Code - track last 10 keys (non-blocking)
         if event.type() == QEvent.KeyPress:
-            # Ignore auto-repeat events (when keys are held down)
-            if event.isAutoRepeat():
-                return super().eventFilter(obj, event)
-            
-            # Apply 0.05 second cooldown to avoid duplicate processing
-            current_time = time.time()
-            if current_time - self.last_key_time < 0.05:
-                return super().eventFilter(obj, event)
-            
-            self.last_key_time = current_time
+            # Only track keys when not auto-repeating and outside cooldown
+            if not event.isAutoRepeat():
+                current_time = time.time()
+                if current_time - self.last_key_time >= 0.05:
+                    self.last_key_time = current_time
+                    key = event.key()
+                    # Add to history
+                    self.key_history.append(key)
+                    # Check if last N keys match the konami code
+                    if list(self.key_history) == self.konami_code:
+                        self.trigger_secret()
+                        self.key_history.clear()
+        
+        if obj is self.search_input and event.type() == QEvent.KeyPress:
             key = event.key()
-            # Add to history
-            self.key_history.append(key)
-            
-            # Check if last N keys match the konami code
-            if list(self.key_history) == self.konami_code:
-                self.trigger_secret()
-                self.key_history.clear()
+            modifiers = event.modifiers()
+            if key == Qt.Key_Return or key == Qt.Key_Enter:
+                if modifiers == Qt.ShiftModifier:
+                    # Allow QTextEdit to insert a newline
+                    return super().eventFilter(obj, event)
+                else:
+                    self.run_search()
+                    return True
 
         return super().eventFilter(obj, event)
 
