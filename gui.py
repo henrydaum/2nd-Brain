@@ -185,6 +185,7 @@ class MainWindow(QMainWindow):
         self.drive_service = get_drive_service(self.config)
         self.workers = []
         self.search_filter = None  # None means "Search Everything"
+        self.attached_file_path = None
         
         self.setWindowTitle("Second Brain")
         self.resize(900, 600)
@@ -762,7 +763,59 @@ class MainWindow(QMainWindow):
         threading.Thread(target=reauth_worker, daemon=True).start()
 
     def handle_attach(self):
-        ...
+        """
+        Toggle: 
+        - If NO attachment -> Open File Picker -> Set 'X' icon.
+        - If YES attachment -> Clear it -> Reset 'Paperclip' icon.
+        """
+        # --- CASE 1: REMOVE ATTACHMENT ---
+        if self.attached_file_path:
+            self.attached_file_path = None
+            self.btn_attach.setToolTip("Attach File")
+            
+            # Restore the original Paperclip Icon
+            # (assuming default icon color is gray/TEXT_MAIN)
+            self.btn_attach.setIcon(qta.icon('ph.paperclip-bold')) 
+            logger.info("Attachment removed by user.")
+            return
+
+        # --- CASE 2: ADD ATTACHMENT ---
+        # 1. Prepare Filters
+        text_exts = self.config.get('text_extensions', [])
+        img_exts = self.config.get('image_extensions', [])
+        all_exts = text_exts + img_exts
+
+        def fmt(ext_list):
+            return " ".join([f"*{ext}" for ext in ext_list])
+
+        filters = [
+            f"All Supported Files ({fmt(all_exts)})",
+            f"Text Documents ({fmt(text_exts)})",
+            f"Images ({fmt(img_exts)})",
+            "All Files (*)"
+        ]
+
+        # 2. Open Dialog
+        path, _ = QFileDialog.getOpenFileName(
+            self, 
+            "Attach File to Search", 
+            "", 
+            ";;".join(filters)
+        )
+
+        # 3. Handle Selection
+        if path:
+            self.attached_file_path = path
+            filename = Path(path).name
+            
+            # Update Tooltip to indicate clicking will "Remove"
+            self.btn_attach.setToolTip(f"Remove attachment: {filename}")
+            
+            # Change Icon to a Red 'X'
+            # using 'mdi.close' or 'mdi.window-close'
+            self.btn_attach.setIcon(qta.icon('mdi.close')) 
+            
+            logger.info(f"Attached file: {path}")
 
     def handle_filter_folder(self):
         """
