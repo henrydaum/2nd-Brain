@@ -108,6 +108,16 @@ class ResultDetailsDialog(QDialog):
         # 4. Buttons (Open File | Close)
         btn_layout = QHBoxLayout()
         btn_text_color = "white"
+
+        # Attach File Button
+        color = OUTLINE
+        btn_attach_result = QPushButton("Attach")
+        btn_attach_result.setCursor(Qt.PointingHandCursor)
+        btn_attach_result.clicked.connect(self.attach_and_close)
+        btn_attach_result.setStyleSheet(f"""
+            QPushButton {{ background-color: {BG_DARK}; color: {btn_text_color}; border-radius: 4px; border: 1px solid {color}; }}
+            QPushButton:hover {{ background-color: {color}; }}
+        """)
         
         # Copy Path Button
         color = OUTLINE
@@ -131,7 +141,7 @@ class ResultDetailsDialog(QDialog):
 
         # Open File
         color = OUTLINE
-        btn_open = QPushButton("Open File")
+        btn_open = QPushButton("Open")
         btn_open.setCursor(Qt.PointingHandCursor)
         btn_open.clicked.connect(self.open_file)
         btn_open.setStyleSheet(f"""
@@ -150,6 +160,7 @@ class ResultDetailsDialog(QDialog):
         """)
         
         # Add to layout
+        btn_layout.addWidget(btn_attach_result)
         btn_layout.addWidget(btn_copy)
         btn_layout.addWidget(btn_reveal)
         btn_layout.addWidget(btn_open)
@@ -171,6 +182,11 @@ class ResultDetailsDialog(QDialog):
             subprocess.run(['explorer', '/select,', str(Path(self.path).resolve())])
         except Exception as e:
             print(f"Error revealing file: {e}")
+
+    def attach_and_close(self):
+        # Call the main window's new setter function
+        self.parent().set_attachment(self.path)
+        self.accept()
 
 class MainWindow(QMainWindow):
     # Define the signal at the QObject class level
@@ -762,60 +778,59 @@ class MainWindow(QMainWindow):
                 self.drive_service = None
         threading.Thread(target=reauth_worker, daemon=True).start()
 
-    def handle_attach(self):
-        """
-        Toggle: 
-        - If NO attachment -> Open File Picker -> Set 'X' icon.
-        - If YES attachment -> Clear it -> Reset 'Paperclip' icon.
-        """
-        # --- CASE 1: REMOVE ATTACHMENT ---
-        if self.attached_file_path:
-            self.attached_file_path = None
-            self.btn_attach.setToolTip("Attach File")
-            
-            # Restore the original Paperclip Icon
-            # (assuming default icon color is gray/TEXT_MAIN)
-            self.btn_attach.setIcon(qta.icon('ph.paperclip-bold')) 
-            logger.info("Attachment removed by user.")
-            return
+    def remove_attachment(self):
+        """Clears the current attachment and resets the UI."""
+        self.attached_file_path = None
+        self.btn_attach.setToolTip("Attach File")
+        # Reset to default paperclip icon
+        self.btn_attach.setIcon(qta.icon('ph.paperclip-bold')) 
+        logger.info("Attachment removed.")
 
-        # --- CASE 2: ADD ATTACHMENT ---
-        # 1. Prepare Filters
+    def set_attachment(self, path):
+        """Sets the attachment path and updates the UI to the 'Remove' state."""
+        if not path: 
+            return
+        self.attached_file_path = str(path)
+        filename = Path(path).name
+        # Update Tooltip to show what is attached
+        self.btn_attach.setToolTip(f"Remove attachment: {filename}")
+        # Change Icon to an 'X' (indicating clicking it will remove)
+        self.btn_attach.setIcon(qta.icon('mdi.close')) 
+        logger.info(f"Attached file: {path}")
+
+    def find_attachment(self):
+        """Opens the file picker and returns the attachment if one is chosen."""
+        # 1. Get extensions from config
         text_exts = self.config.get('text_extensions', [])
         img_exts = self.config.get('image_extensions', [])
         all_exts = text_exts + img_exts
-
+        # 2. Format filters for Qt
         def fmt(ext_list):
             return " ".join([f"*{ext}" for ext in ext_list])
-
         filters = [
             f"All Supported Files ({fmt(all_exts)})",
             f"Text Documents ({fmt(text_exts)})",
             f"Images ({fmt(img_exts)})",
             "All Files (*)"
         ]
-
-        # 2. Open Dialog
+        # 3. Open Dialog
         path, _ = QFileDialog.getOpenFileName(
             self, 
             "Attach File to Search", 
             "", 
             ";;".join(filters)
         )
-
-        # 3. Handle Selection
+        # 4. Pass result to setter
         if path:
-            self.attached_file_path = path
-            filename = Path(path).name
-            
-            # Update Tooltip to indicate clicking will "Remove"
-            self.btn_attach.setToolTip(f"Remove attachment: {filename}")
-            
-            # Change Icon to a Red 'X'
-            # using 'mdi.close' or 'mdi.window-close'
-            self.btn_attach.setIcon(qta.icon('mdi.close')) 
-            
-            logger.info(f"Attached file: {path}")
+            return path
+
+    def handle_attach(self):
+        """Main button handler: Toggles between Find and Remove."""
+        if self.attached_file_path:
+            self.remove_attachment()
+        else:
+            attachment = self.find_attachment()
+            self.set_attachment(attachment)
 
     def handle_filter_folder(self):
         """
@@ -825,10 +840,8 @@ class MainWindow(QMainWindow):
         if self.search_filter is None:
             # State 1: Pick a Folder
             folder = QFileDialog.getExistingDirectory(self, "Select Folder to Search In")
-            
             if folder: # If user didn't cancel
                 self.search_filter = folder
-                
                 # Change UI to "Active Filter" state
                 # Use a "Close/X" icon
                 remove_icon = qta.icon('mdi.filter-variant-remove')

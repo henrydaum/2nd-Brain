@@ -139,7 +139,7 @@ class SearchEngine:
         try:
             rows = self.db.search_lexical(query, search_type, limit=top_k * 2) 
             
-            results = []
+            best_per_file = {}
             paths_needing_vectors = []
             
             filter_prefix = None
@@ -152,20 +152,25 @@ class SearchEngine:
                         continue
 
                 score = -1 * float(rank)
-                res = {
-                    "path": path,
-                    "content": content,
-                    "type": ftype,
-                    "score": score,
-                    "method": "lexical",
-                    "match_type": "Lexical",
-                    "embedding": None 
-                }
-                results.append(res)
-                paths_needing_vectors.append(path)
                 
-                if len(results) >= top_k: break
+                if path not in best_per_file or score > best_per_file[path]['score']:
+                    res = {
+                        "path": path,
+                        "content": content,
+                        "type": ftype,
+                        "score": score,
+                        "method": "lexical",
+                        "match_type": "Lexical",
+                        "embedding": None 
+                    }
+                    best_per_file[path] = res
+                    if path not in paths_needing_vectors:
+                        paths_needing_vectors.append(path)
+                
+                if len(best_per_file) >= top_k: break
 
+            results = list(best_per_file.values())
+            
             if paths_needing_vectors:
                 placeholders = ",".join(["?"] * len(paths_needing_vectors))
                 sql = f"SELECT path, embedding FROM embeddings WHERE chunk_index=0 AND path IN ({placeholders})"
@@ -277,6 +282,7 @@ class SearchEngine:
         def merge_in(results):
             for r in results:
                 key = r['path']
+                match_type = r['match_type']
                 if key not in combined_map:
                     combined_map[key] = r
                 else:
