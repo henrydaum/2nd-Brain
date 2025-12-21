@@ -27,8 +27,8 @@ The system monitors your folders for changes. If you add, delete, or edit a file
 * **How to use:** Fully automatic. As long as the application is running (even in the tray), your index remains up to date. If the OCR, Embedding, or LLM models are loaded, they will automatically process the files to enable search. You can add or remove folders and extensions as needed.
 
 ### Bot Analysis
-When the LLM is loaded, it will automatically give a rating to every file in your database. This rating is based on the overall quality. Files with higher scores are then boosted in the search algorithm, ensuring results are of the highest quality.
-* **How to use:** Happens automatically if the LLM is loaded. In order to rate images, load a vision-enabled model, like Gemma 3 or GPT 4.1. AI models can be loaded locally using LM Studio or in the cloud using the OpenAI API (requires key). Once the LLM's job is done, the ratings will be used to improve subsequent results even if the LLM is no longer loaded.
+When the LLM is loaded, all text and search results will be accompanied by an LLM response called 'AI Insights'. Furthermore, the LLM will automatically give a rating to every file in your database. This rating is based on the overall quality. Files with higher scores are then boosted in the search algorithm, ensuring results are of the highest quality.
+* **How to use:** Happens automatically if the LLM is loaded. In order to get feedback on images, load a vision-enabled model, like Gemma 3 or GPT 4.1. AI models can be loaded locally using LM Studio or in the cloud using the OpenAI API (requires key). Once an LLM rating job is done, the rating will be used to improve subsequent results even if the LLM is no longer loaded.
 
 ## Screenshots
 
@@ -112,11 +112,13 @@ Increasing `max_workers` in `config.json` maximizes thread usage, enabling GPUs 
 
 ## Coming Soon
 
-In order to enable RAG, I plan to expose an API endpoint for the search algorithm. This would enable LLMs trained for tool use to query the entire database from anywhere on your computer. I'll also make a tab next to the text and image results to make room for an LLM response. I apologize I don't have that done already.
+I plan to expose an API endpoint for the search algorithm. This would enable LLMs trained for tool use to query the entire database from anywhere on your computer.
 
 ## License
 
 This project is licensed under the MIT License.
+
+
 
 
 
