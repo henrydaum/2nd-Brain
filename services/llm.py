@@ -56,7 +56,7 @@ class LLMService:
             prompt = (
                 "Analyze this image for a personal knowledge base. "
                 "Rate 'Information Density' & 'Utility' (0.0 to 1.0). "
-                "Do not pass a moral judgement; rate only based on quality. If the author had malicious intent, but produced well-organized and precise writing, give it a high rating. Essentially, do not rate based on intent or feeling. Be unbiased to the max."
+                "Do not pass a moral judgement; rate only based on quality. If the author had malicious intent, but produced well-organized and precise writing, give it a high rating. Essentially, do not rate based on intent or feeling. Be unbiased."
                 f"\n\nSTATISTICAL TARGET: Avg 0.5."
                 "\n\nCRITERIA:"
                 "\n- 0.0: Gibberish, blurry, random, difficult to parse, useless."
@@ -81,7 +81,7 @@ class LLMService:
             prompt = (
                 f"Analyze the text snippet below."
                 "Rate 'Information Density' & 'Utility' (0.0 to 1.0). "
-                "Do not pass a moral judgement; rate only based on quality. If the author had malicious intent, but produced well-organized and precise writing, give it a high rating. Essentially, do not rate based on intent or feeling. Be unbiased to the max."
+                "Do not pass a moral judgement; rate only based on quality. If the author had malicious intent, but produced well-organized and precise writing, give it a high rating. Essentially, do not rate based on intent or feeling. Be unbiased."
                 f"\n\nSTATISTICAL TARGET: Avg 0.5."
                 f"\n\nCRITERIA:"
                 f"\n- 0.0: Gibberish, spam, empty, random, misinformation, useless."
