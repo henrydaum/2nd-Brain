@@ -69,7 +69,6 @@ class BaseLLM:
         final_prompt = (
             f"{prompt}\n\n"
             f"The following images are provided:{source_info}\n\n"
-            f"(You can only see the first frame of .gif files.)"
         )
         return final_prompt
 
@@ -95,8 +94,7 @@ class LMStudioLLM(BaseLLM):
             logger.info("LM Studio model loaded.")
             return True
         except Exception as e:
-            logger.error(f"LM Studio Error: {e}")
-            raise
+            logger.error(f"LM Studio Load rror: {e}")
             return False
 
     def unload(self):
@@ -156,24 +154,26 @@ class LMStudioLLM(BaseLLM):
                     os.remove(f_path)
             except: pass
 
-    def invoke(self, prompt, image_paths=None, temperature=1.0):
-        chat_input, temp_files = self.prepare_chat(prompt, image_paths or [])
+    def invoke(self, prompt, image_paths=[], temperature=1.0):
         try:
+            chat_input, temp_files = self.prepare_chat(prompt, image_paths)
             response = self.model.respond(chat_input, config={"temperature": temperature})
             return response.content
         except Exception as e:
-            return f"Error: {e}"
+            return f"LM Studio Invoke Error: {e}"
         finally:
             if temp_files:
                 import time
                 time.sleep(0.1)
                 self._cleanup_temp_files(temp_files)
     
-    def stream(self, prompt, image_paths=None, temperature=1.0):
-        chat_input, temp_files = self.prepare_chat(prompt, image_paths or [])
+    def stream(self, prompt, image_paths=[], temperature=1.0):
         try:
+            chat_input, temp_files = self.prepare_chat(prompt, image_paths)
             for fragment in self.model.respond_stream(chat_input, config={"temperature": temperature}):
                 yield fragment.content
+        except Exception as e:
+            return f"LM Studio Stream Error: {e}"
         finally:
             if temp_files:
                 import time
@@ -188,23 +188,27 @@ class OpenAILLM(BaseLLM):
 
     def load(self):
         """API is lightweight, not much to load or unload."""
-        logger.info(f"Loading OpenAI model: {self.model_name}")
-        import openai
-        if self.api_key:
-            self.client = openai.OpenAI(api_key=self.api_key)
-        else:
-            self.client = openai.OpenAI() # Uses env var
-        # Check for vision; not as straightforward as LM Studio
-        model_name_lower = self.model_name.lower()
-        openai_vision_keywords = ["vision", "gpt-4o", "gpt-5", "gpt-4.1", "o3", "turbo"]
-        self.vision = any(keyword in model_name_lower for keyword in openai_vision_keywords)
-        if self.vision:
-            logger.info(f"Model has vision support.")
-        else:
-            logger.info(f"Model does not have vision support.")
-        self.loaded = True
-        logger.info("OpenAI model loaded.")
-        return True
+        try:
+            logger.info(f"Loading OpenAI model: {self.model_name}")
+            import openai
+            if self.api_key:
+                self.client = openai.OpenAI(api_key=self.api_key)
+            else:
+                self.client = openai.OpenAI() # Uses env var
+            # Check for vision; not as straightforward as LM Studio
+            model_name_lower = self.model_name.lower()
+            openai_vision_keywords = ["vision", "gpt-4o", "gpt-5", "gpt-4.1", "o3", "turbo"]
+            self.vision = any(keyword in model_name_lower for keyword in openai_vision_keywords)
+            if self.vision:
+                logger.info(f"Model has vision support.")
+            else:
+                logger.info(f"Model does not have vision support.")
+            self.loaded = True
+            logger.info("OpenAI model loaded.")
+            return True
+        except Exception as e:
+            logger.error(f"OpenAI Load Error: {e}")
+            return False
     
     def unload(self):
         self.loaded = False
@@ -240,9 +244,9 @@ class OpenAILLM(BaseLLM):
         
         return [{"role": "user", "content": content_list}]
 
-    def invoke(self, prompt, image_paths=None, temperature=1.0):
-        messages = self.prepare_chat(prompt, image_paths or [])
+    def invoke(self, prompt, image_paths=[], temperature=1.0):
         try:
+            messages = self.prepare_chat(prompt, image_paths)
             response = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
@@ -250,16 +254,19 @@ class OpenAILLM(BaseLLM):
             )
             return response.choices[0].message.content
         except Exception as e:
-            return f"Error: {e}"
+            return f"OpenAI Invoke Error: {e}"
 
-    def stream(self, prompt, image_paths=None, temperature=1.0):
-        messages = self.prepare_chat(prompt, image_paths or [])
-        stream = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=messages,
-            temperature=temperature,
-            stream=True
-        )
-        for chunk in stream:
-            if chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+    def stream(self, prompt, image_paths=[], temperature=1.0):
+        try:
+            messages = self.prepare_chat(prompt, image_paths)
+            stream = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                temperature=temperature,
+                stream=True
+            )
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        except Exception as e:
+            yield f"OpenAI Stream Error: {e}"

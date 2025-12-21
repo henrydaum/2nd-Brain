@@ -11,7 +11,7 @@ import urllib.parse
 import re
 from collections import deque
 # Internal
-from guiWorkers import SearchWorker, StatsWorker, ModelToggleWorker, DatabaseActionWorker, LLMWorker, record_search_history, SearchFacts
+from guiWorkers import SearchWorker, StatsWorker, ModelToggleWorker, DatabaseActionWorker, LLMWorker, SearchFacts
 from Parsers import get_drive_service
 # Qt
 from PySide6.QtWidgets import (
@@ -43,8 +43,7 @@ OUTLINE      = "#3e4451"
 
 # --- LOGGING HANDLER ---
 class GuiLogHandler(logging.Handler):
-    """A custom logging handler that calls a function with the log record."""
-    
+    """A custom logging handler that calls a function with the log record, and sends them to a page in the sidebar."""
     def __init__(self, log_display_callback):
         super().__init__()
         self.log_display_callback = log_display_callback # This will be MainWindow.display_log_message
@@ -57,6 +56,7 @@ class GuiLogHandler(logging.Handler):
         self.log_display_callback(msg)
 
 class FileLinkBrowser(QTextBrowser):
+    """Enables the QTextBrowser to open local files when links are clicked by defining a custom handler for anchorClicked."""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setOpenExternalLinks(False)
@@ -67,44 +67,32 @@ class FileLinkBrowser(QTextBrowser):
         # 1. Get the path (Qt now handles the "file:///" parsing automatically)
         if url.isLocalFile():
             path = url.toLocalFile() # Returns e.g. "Z:/My Drive/File.txt"
-            
             # 2. Normalize for Windows (Flip / back to \)
             path = os.path.normpath(path) 
-
             logger.info(f"Opening local file: {path}")
-            
             if os.path.exists(path):
                 try:
                     os.startfile(path)
                 except Exception as e:
                     logger.error(f"Failed to open file: {e}")
             else:
-                logger.warning(f"File not found: {path}")
-        
+                logger.warning(f"File not found: {path}")        
         else:
             # Handle actual web links (http://google.com)
             QDesktopServices.openUrl(url)
 
 class ResultDetailsDialog(QDialog):
+    """Sprawling class that simply displays a small window when a result is clicked with a few options and facts."""
     def __init__(self, item_data, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Result Details")
         self.setFixedSize(500, 375)
         self.path = item_data.get('path', 'Unknown')
         
-        # --- STYLES ---
-        # Reuse your main app styling constants here for consistency
-        BG_DARK = "#1e2227"
-        BG_LIGHT = "#282c34"
-        TEXT_MAIN = "#abb2bf"
-        ACCENT = "#cbe3a7"
-        
         self.setStyleSheet(f"""
             QDialog {{ background-color: {BG_DARK}; color: {TEXT_MAIN}; }}
             QLabel {{ color: {TEXT_MAIN}; font-size: 14px; }}
             QTextBrowser {{ background-color: {BG_LIGHT}; border: none; padding: 10px; color: {TEXT_MAIN}; font-size: 13px; }}
-            QPushButton {{ background-color: {BG_LIGHT}; color: white; border-radius: 4px; padding: 8px; border: 1px solid #3e4451; }}
-            QPushButton:hover {{ background-color: #3e4451; }}
         """)
 
         layout = QVBoxLayout(self)
@@ -114,7 +102,7 @@ class ResultDetailsDialog(QDialog):
         # 1. Header (Filename)
         lbl_name = QLabel(Path(self.path).name)
         lbl_name.setFont(QFont("Segoe UI", 16, QFont.Bold))
-        lbl_name.setStyleSheet(f"color: {ACCENT};")
+        lbl_name.setStyleSheet(f"color: {ACCENT_COLOR};")
         layout.addWidget(lbl_name)
 
         # 2. Metadata Row (Score | Type)
@@ -134,51 +122,49 @@ class ResultDetailsDialog(QDialog):
         self.text_browser.setText(content)
         layout.addWidget(self.text_browser)
 
-        # btn.setFixedSize(90, 30)
-
         # 4. Buttons (Open File | Close)
         btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(10)
         btn_text_color = "white"
+        btn_style = f"""
+            QPushButton {{ 
+                background-color: {BG_DARK}; 
+                color: {btn_text_color}; 
+                border-radius: 4px; 
+                border: 1px solid {OUTLINE};
+                min-height: 30px;
+                padding: 0 10px;
+            }}
+            QPushButton:hover {{ background-color: {OUTLINE}; }}
+        """
 
         # Attach File Button
         color = OUTLINE
         btn_attach_result = QPushButton("Attach")
         btn_attach_result.setCursor(Qt.PointingHandCursor)
         btn_attach_result.clicked.connect(self.attach_and_close)
-        btn_attach_result.setStyleSheet(f"""
-            QPushButton {{ background-color: {BG_DARK}; color: {btn_text_color}; border-radius: 4px; border: 1px solid {color}; }}
-            QPushButton:hover {{ background-color: {color}; }}
-        """)
+        btn_attach_result.setStyleSheet(btn_style)
         
         # Copy Path Button
         color = OUTLINE
         btn_copy = QPushButton("Copy Path")
         btn_copy.setCursor(Qt.PointingHandCursor)
         btn_copy.clicked.connect(lambda: QApplication.clipboard().setText(self.path))
-        btn_copy.setStyleSheet(f"""
-            QPushButton {{ background-color: {BG_DARK}; color: {btn_text_color}; border-radius: 4px; border: 1px solid {color}; }}
-            QPushButton:hover {{ background-color: {color}; }}
-        """)
+        btn_copy.setStyleSheet(btn_style)
 
         # Reveal in Explorer Button
         color = OUTLINE
         btn_reveal = QPushButton("Show Location")
         btn_reveal.setCursor(Qt.PointingHandCursor)
         btn_reveal.clicked.connect(self.reveal_in_explorer)
-        btn_reveal.setStyleSheet(f"""
-            QPushButton {{ background-color: {BG_DARK}; color: {btn_text_color}; border-radius: 4px; border: 1px solid {color}; }}
-            QPushButton:hover {{ background-color: {color}; }}
-        """)
+        btn_reveal.setStyleSheet(btn_style)
 
         # Open File
         color = OUTLINE
         btn_open = QPushButton("Open")
         btn_open.setCursor(Qt.PointingHandCursor)
         btn_open.clicked.connect(self.open_file)
-        btn_open.setStyleSheet(f"""
-            QPushButton {{ background-color: {BG_DARK}; color: {btn_text_color}; border-radius: 4px; border: 1px solid {color}; }}
-            QPushButton:hover {{ background-color: {color}; }}
-        """)
+        btn_open.setStyleSheet(btn_style)
         
         # Close
         color = ACCENT_COLOR
@@ -186,7 +172,7 @@ class ResultDetailsDialog(QDialog):
         btn_close.setCursor(Qt.PointingHandCursor)
         btn_close.clicked.connect(self.accept)
         btn_close.setStyleSheet(f"""
-            QPushButton {{ background-color: {BG_DARK}; color: {ACCENT_COLOR}; border-radius: 4px; border: 1px solid {color}; }}
+            QPushButton {{ background-color: {BG_DARK}; color: {ACCENT_COLOR}; border-radius: 4px; border: 1px solid {color}; min-height: 30px; padding: 0 10px;}}
             QPushButton:hover {{ background-color: {color}; color: {BG_DARK}; }}
         """)
         
@@ -215,12 +201,13 @@ class ResultDetailsDialog(QDialog):
             print(f"Error revealing file: {e}")
 
     def attach_and_close(self):
-        # Call the main window's new setter function
+        # Replaces the current attachment and closes the dialog
         self.parent().set_attachment(self.path)
         self.accept()
 
 class MainWindow(QMainWindow):
-    # Define the signal at the QObject class level
+    """The main application window for Second Brain, which includes the system tray window."""
+    # Must define the log_signal in order for the log info page to update from other threads
     log_signal = Signal(str)
 
     def __init__(self, search_engine, orchestrator, models, config):
@@ -229,7 +216,7 @@ class MainWindow(QMainWindow):
         self.orchestrator = orchestrator
         self.models = models
         self.config = config
-        self.drive_service = get_drive_service(self.config)
+        self.drive_service = get_drive_service(self.config)  # Needed to open .gdoc attachments
         self.workers = []
         self.search_filter = None  # None means "Search Everything"
         self.attached_file_path = None
@@ -243,6 +230,7 @@ class MainWindow(QMainWindow):
         self.setup_ui()
         self.setup_tray()
 
+        # Secret easter egg: Konami Code, might remove later
         self.konami_code = [
             Qt.Key_Up.value, Qt.Key_Up.value, Qt.Key_Down.value, Qt.Key_Down.value,
             Qt.Key_Left.value, Qt.Key_Right.value, Qt.Key_Left.value, Qt.Key_Right.value,
@@ -252,22 +240,22 @@ class MainWindow(QMainWindow):
         self.last_key_time = 0  # Cooldown tracking
         QApplication.instance().installEventFilter(self)
 
-        # --- Configure Logging ---
+        # Configure Logging for log info page
         self.log_signal.connect(self.display_log_message_safe)
         self.log_handler = GuiLogHandler(self.log_signal.emit)
-        
-        # Get the root logger and add the custom handler
+        # Get the root logger and add the custom handler, also for the log info page
         root_logger = logging.getLogger()
         root_logger.addHandler(self.log_handler)
         root_logger.setLevel(logging.INFO)
         
-        # Start Stats Polling
+        # Start stats polling (every N seconds) for the status bar
         if hasattr(self.search_engine, 'db'):
             self.stats_thread = StatsWorker(self.search_engine.db)
             self.stats_thread.stats_updated.connect(self.update_status_bar)
             self.stats_thread.start()
 
     def setup_styles(self):
+        """Many key elements of the application are styled here, but not all."""
         self.setStyleSheet(f"""
             QMainWindow {{ background-color: {BG_DARK}; }}
             QWidget {{ color: {TEXT_MAIN}; font-family: 'Segoe UI', sans-serif; font-size: 14px; }}
@@ -296,6 +284,7 @@ class MainWindow(QMainWindow):
         """)
 
     def setup_ui(self):
+        """Sets up the main UI elements of the application."""
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
@@ -341,13 +330,14 @@ class MainWindow(QMainWindow):
         self.btn_logs.setIconSize(QSize(26, 26))
         self.btn_logs.setFixedSize(42, 42)
         
+        # SIDEBAR LAYOUT
         side_layout.addWidget(self.btn_search)
         side_layout.addStretch()
         side_layout.addWidget(self.btn_settings)
         side_layout.addWidget(self.btn_logs)
         main_layout.addWidget(self.sidebar)
 
-        # --- STACK ---
+        # STACK FOR PAGES
         self.stack = QStackedWidget()
         
     # SEARCH PAGE
@@ -359,8 +349,7 @@ class MainWindow(QMainWindow):
         # INPUT WRAPPER - for spacing
         self.input_wrapper = QWidget()
         input_wrapper_layout = QHBoxLayout(self.input_wrapper)
-        
-        # 1. APPLY THE DESIRED MARGINS/PADDING HERE (e.g., 15px all around)
+        # Padding for the layout - must be precise
         # This margin applies *around* the input_container_frame inside the wrapper.
         input_wrapper_layout.setContentsMargins(70, 40, 70, 10) # L, T, R, B (set bottom to 0)
         input_wrapper_layout.setSpacing(0)
@@ -368,7 +357,7 @@ class MainWindow(QMainWindow):
         # INPUT CONTAINER
         self.input_container_frame = QFrame()
         input_container_layout = QHBoxLayout(self.input_container_frame)
-        input_container_layout.setContentsMargins(4, 5, 7, 0) # L, T, R, B
+        input_container_layout.setContentsMargins(4, 5, 7, 0) # L, T, R, B - must be precies
         input_container_layout.setSpacing(0)
         self.input_container_frame.setStyleSheet("""
             QFrame {
@@ -379,19 +368,21 @@ class MainWindow(QMainWindow):
                 font-size: 14px;
                 selection-color: white;
             }
-        """)  # selection-background-color: blue; 
+        """)
         
         # SEARCH BAR - TEXT INPUT
         self.search_input_vertical_padding = 12
         self.search_input = QTextEdit()
         self.search_input.setPlaceholderText("Type to search")
+        # Dynamically adjust height based on content
         doc_height = int(self.search_input.document().size().height())
         self.search_input_min_height = doc_height
         self.search_input_max_height = (doc_height * 7)
         self.search_input.textChanged.connect(self.adjust_search_input_height)
-        self.search_input.setFixedHeight(doc_height + (self.search_input_vertical_padding * 2) + 3)  # adjust +4 so it doesn't wiggle on start
+        self.search_input.setFixedHeight(doc_height + (self.search_input_vertical_padding * 2) + 3)  # adjust +3-4 so it doesn't wiggle on first type
         self.search_input.setFixedWidth(self.search_input.width())
         self.search_input.setStyleSheet("border: none;")
+        # Custom stylesheet for the QTextEdit inside the input container
         self.search_input.setStyleSheet("""
             QTextEdit {
                 color: #e1e2e8;
@@ -402,7 +393,9 @@ class MainWindow(QMainWindow):
                 padding: 8px 16px;
                 selection-color: white;
             }
-        """)  # selection-background-color: blue;
+        """)
+
+    # SEARCH PAGE BUTTONS - each of these follow a pattern: icon, tooltip, size, style, padding layout
 
         # FOLDER FILTER BUTTON
         self.filter_icon = qta.icon('mdi.filter-variant')
@@ -421,11 +414,11 @@ class MainWindow(QMainWindow):
                 background-color: {BG_LIGHT};
             }}
         """)
-        self.btn_filter.clicked.connect(self.handle_filter_folder)
+        self.btn_filter.clicked.connect(self.handle_filter)
         self.btn_filter_container = QWidget()
         self.btn_filter_container.setStyleSheet("""background-color: transparent;""")
         btn_filter_layout = QVBoxLayout(self.btn_filter_container)
-        # This layout adds the 8px lift
+        # This aligns the icon in the center of the search bar layout:
         btn_filter_layout.setContentsMargins(0, 1.5, 0, 0) # L, T, R, Bottom
         btn_filter_layout.addWidget(self.btn_filter)
 
@@ -450,7 +443,7 @@ class MainWindow(QMainWindow):
         self.btn_attach_container = QWidget()
         self.btn_attach_container.setStyleSheet("""background-color: transparent;""")
         btn_attach_layout = QVBoxLayout(self.btn_attach_container)
-        # This layout adds the 8px lift
+        # This aligns the icon in the center of the search bar layout:
         btn_attach_layout.setContentsMargins(0, 1.5, 0, 0) # L, T, R, Bottom
         btn_attach_layout.addWidget(self.btn_attach)
 
@@ -477,7 +470,7 @@ class MainWindow(QMainWindow):
         self.btn_send_container = QWidget()
         self.btn_send_container.setStyleSheet("""background-color: transparent;""")
         btn_send_layout = QVBoxLayout(self.btn_send_container)
-        # This layout adds the 8px lift
+        # This aligns the icon in the center of the search bar layout:
         btn_send_layout.setContentsMargins(0, 1.5, 0, 0) # L, T, R, Bottom
         btn_send_layout.addWidget(self.btn_send)
 
@@ -486,12 +479,13 @@ class MainWindow(QMainWindow):
         input_container_layout.addWidget(self.btn_filter_container, 0, Qt.AlignmentFlag.AlignTop)
         input_container_layout.addWidget(self.btn_attach_container, 0, Qt.AlignmentFlag.AlignTop)
         input_container_layout.addWidget(self.btn_send_container, 0, Qt.AlignmentFlag.AlignTop)
+        # Wrapper for centering
         input_wrapper_layout.addStretch()
         input_wrapper_layout.addWidget(self.input_container_frame)
         input_wrapper_layout.addStretch()
         search_layout.addWidget(self.input_wrapper, 0)
         
-        # RESULTS AREA
+    # RESULTS AREA - TABS
         self.results_tabs = QTabWidget()
         
         # TEXT TABLE FOR TEXT TAB
@@ -504,7 +498,7 @@ class MainWindow(QMainWindow):
         self.doc_table.setShowGrid(False)
         self.doc_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.doc_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.doc_table.itemClicked.connect(self.open_file_from_table)
+        self.doc_table.itemClicked.connect(self.open_results_dialog_from_table)
         self.doc_table.hideColumn(0)
         self.doc_table.hideColumn(2)
         self.doc_table.hideColumn(3)
@@ -520,11 +514,6 @@ class MainWindow(QMainWindow):
             QTableWidget::item:selected:hover {{ background-color: {BG_LIGHT}; border: none; outline: none; }}
             QTableWidget::item:pressed {{ background-color: {BG_DARK}; border: none; outline: none; }}
         """)
-        # --- PADDING WRAPPER FOR DOCUMENTS ---
-        self.tab_doc_container = QWidget()
-        doc_layout = QVBoxLayout(self.tab_doc_container)
-        doc_layout.setContentsMargins(0, 0, 0, 0)  # L, T, R, Bottom
-        doc_layout.addWidget(self.doc_table)
         
         # IMAGE LIST FOR IMAGE TAB
         self.image_list = QListWidget()
@@ -536,22 +525,17 @@ class MainWindow(QMainWindow):
         self.image_list.setTextElideMode(Qt.ElideNone)
         self.image_list.setMovement(QListWidget.Static)
         self.image_list.setGridSize(QSize(200, 240))
-        self.image_list.itemClicked.connect(self.open_file_from_list)
+        self.image_list.itemClicked.connect(self.open_results_dialog_from_list)
         self.image_list.setStyleSheet(f"""
-            QListWidget {{ background-color: {BG_DARK}; border: none; outline: 0; selection-background-color: {BG_DARK}; }}
+            QListWidget {{ background-color: {BG_DARK}; border: none; outline: 0; selection-background-color: {BG_DARK}; padding-left: 35px; }}
             QListWidget::item {{ border: none; color: {TEXT_MAIN}; padding: 20px; border-radius: 0px;}}
             QListWidget::item:selected {{ background-color: {BG_DARK}; color: {TEXT_MAIN}; border: none; outline: none;}}
             QListWidget::item:hover {{ background-color: {BG_LIGHT}; color: {TEXT_MAIN}; border: none; outline: none; }}
             QListWidget::item:selected:hover {{ background-color: {BG_LIGHT}; border: none; outline: none; }}
             QListWidget::item:pressed {{ background-color: {BG_DARK}; color: {TEXT_MAIN}; border: none; outline: none; }}
         """)
-        # --- PADDING WRAPPER FOR IMAGES ---
-        self.tab_img_container = QWidget()
-        img_layout = QVBoxLayout(self.tab_img_container)
-        img_layout.setContentsMargins(35, 0, 0, 0)  # L, T, R, Bottom
-        img_layout.addWidget(self.image_list)
 
-        # TEXT AREA FOR LLM OUTPUT TAB
+        # TEXT AREA FOR AI INSIGHTS TAB
         self.rag_page = QWidget()
         rag_layout = QVBoxLayout(self.rag_page)
         self.llm_output = FileLinkBrowser()
@@ -565,6 +549,7 @@ class MainWindow(QMainWindow):
                 color: {TEXT_MAIN};
             }}
         """)
+        # To adjust the file link text color to the accent color
         self.llm_output.document().setDefaultStyleSheet(f"""
             a {{
                 color: {ACCENT_COLOR};
@@ -574,19 +559,20 @@ class MainWindow(QMainWindow):
         """)
         rag_layout.addWidget(self.llm_output, 1)
 
-        # ADD THE WRAPPERS TO THE TABS (Instead of the raw widgets)
-        self.results_tabs.addTab(self.tab_doc_container, "Documents")
-        self.results_tabs.addTab(self.tab_img_container, "Images")
+        # ADD TABS TO THE TAB WIDGET
+        self.results_tabs.addTab(self.doc_table, "Documents")
+        self.results_tabs.addTab(self.image_list, "Images")
         self.results_tabs.addTab(self.rag_page, "AI Insights")
+        # Add it to the main search page
         search_layout.addWidget(self.results_tabs, 1)
         
     # SETTINGS PAGE
         self.page_settings = QWidget()
-        # We use a VBox for the main page
+        # Use a VBox for the main page
         settings_main_layout = QVBoxLayout(self.page_settings)
         settings_main_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Scroll Area (In case you have many config options)
+        # Scroll Area (because of many config options)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet(f"""
@@ -595,12 +581,10 @@ class MainWindow(QMainWindow):
                 background-color: {BG_DARK};
                 border: none;
             }}
-            
             /* 2. The Content Widget inside the Scroll Area */
             QScrollArea > QWidget > QWidget {{
                 background-color: {BG_DARK};
             }}
-
             /* 3. The Vertical Scrollbar */
             QScrollBar:vertical {{
                 border: none;
@@ -625,39 +609,34 @@ class MainWindow(QMainWindow):
             }}
         """)
         
+        # Configure content inside the scroll area
         scroll_content = QWidget()
         self.settings_layout = QVBoxLayout(scroll_content)
         self.settings_layout.setContentsMargins(40, 40, 40, 40)
         self.settings_layout.setSpacing(10)
         self.settings_layout.setAlignment(Qt.AlignTop)
 
-        # --- SECTION 1: LIVE CONTROLS (No Restart) ---
+    # SETTINGS SECTION 1: LIVE CONTROLS (No Restart Required)
         self.add_settings_header("Live Controls")
 
-        # A. Model Toggles (Reusing your logic)
+        # A. Model Toggles
         self.btn_ocr_toggle = self.add_live_setting_row("OCR Engine", "Load/Unload Windows OCR", 
                                   lambda: self.toggle_model('ocr'), color=OUTLINE)
-
         self.btn_embed_toggle = self.add_live_setting_row("Embeddings", "Load/Unload Embedding Models", 
                                   lambda: self.toggle_model('embed'), color=OUTLINE)
-
         self.btn_llm_toggle = self.add_live_setting_row("Local LLM", "Load/Unload Chat Model, enables AI Insights",
                                   lambda: self.toggle_model('llm'), color=OUTLINE)
-
         self.btn_screenshotter_toggle = self.add_live_setting_row("Screen Capture", f"Start/Stop taking screenshots every {self.config.get('screenshot_interval', 'N')} seconds, deleted after {self.config.get('delete_screenshots_after', 'N')} days", 
                                   lambda: self.toggle_model('screenshotter'), color=OUTLINE)
 
         self.add_live_setting_row("Data Folder", "Manage all created user data", 
                                   lambda: os.startfile(DATA_DIR), color=OUTLINE)
-        
         # B. External Auth
         self.add_live_setting_row("Google Drive", "Reauthorize connection", 
                                   lambda: self.reauthorize_drive(), color=OUTLINE)
-        
         # C. Database Actions
         self.add_live_setting_row("Retry Tasks", "Set all 'FAILED' tasks back to 'PENDING'", 
                                   lambda: self.run_db_action('retry_failed'), color="#d5b462")
-        
         self.add_live_setting_row("Reset OCR Data", "Delete all OCR text & re-queue images", 
                                   lambda: self.run_db_action('reset_service', 'OCR'), color="#e06c75")
         self.add_live_setting_row("Reset Embeddings", "Delete all vectors & re-queue all files", 
@@ -665,15 +644,13 @@ class MainWindow(QMainWindow):
         self.add_live_setting_row("Reset LLM Data", "Delete AI analysis & re-queue all files", 
                                   lambda: self.run_db_action('reset_service', 'LLM'), color="#e06c75")
 
-        self.settings_layout.addSpacing(30)
+        self.settings_layout.addSpacing(30)  # Space between sections
 
-        # --- SECTION 2: CONFIGURATION (Restart Required) ---
+    # SETTINGS SECTION 2: CONFIGURATION (Restart Required)
         self.add_settings_header("System Configuration (Restart Required)")
-
         self.config_widgets = {} # To store inputs for saving
-        
         # Iterate over config keys to create rows
-        # You can filter this list if you want to hide internal keys
+        # Filter this list to hide internal keys!
         ignored_keys = ['quality_weight'] 
         for key, value in self.config.items():
             if key not in ignored_keys:
@@ -681,7 +658,7 @@ class MainWindow(QMainWindow):
 
         self.settings_layout.addSpacing(20)
         
-        # Save Button
+        # Large Save Button
         btn_save = QPushButton("Save Configuration")
         btn_save.setFixedHeight(45)
         btn_save.setStyleSheet(f"""
@@ -705,7 +682,8 @@ class MainWindow(QMainWindow):
         self.log_output.setFont(QFont("Monospace", 9))
         self.log_output.setStyleSheet("QTextEdit { background-color: #111; color: #ccc; border: none; selection-color: white; }")  # selection-background-color: blue; 
         logs_layout.addWidget(self.log_output)
-        
+
+        # Add ALL pages to the stack
         self.stack.addWidget(self.page_search)
         self.stack.addWidget(self.page_settings)
         self.stack.addWidget(self.page_logs)
@@ -732,6 +710,7 @@ class MainWindow(QMainWindow):
         self.search_input.setFixedHeight(final_height)
 
     def eventFilter(self, obj, event):
+        """Automatically found and installed by 'QApplication.instance().installEventFilter(self)'"""
         # Konami Code - track last 10 keys (non-blocking)
         if event.type() == QEvent.KeyPress:
             # Only track keys when not auto-repeating and outside cooldown
@@ -746,7 +725,7 @@ class MainWindow(QMainWindow):
                     if list(self.key_history) == self.konami_code:
                         self.trigger_secret()
                         self.key_history.clear()
-        
+        # Enter Key Handling in Search Input - to run search, or to insert newline when shift is held
         if obj is self.search_input and event.type() == QEvent.KeyPress:
             key = event.key()
             modifiers = event.modifiers()
@@ -761,6 +740,7 @@ class MainWindow(QMainWindow):
         return super().eventFilter(obj, event)
 
     def trigger_secret(self):
+        """For Konami Code"""
         logger.info("!! SECRET ACTIVATED !!")
         self.status_bar.showMessage("👁️👁️👁️👁️👁️👁️👁️👁️👁️👁️👁️👁️👁️👁️👁️👁️👁️", 10000)
 
@@ -790,18 +770,17 @@ class MainWindow(QMainWindow):
 
     @Slot(dict, int)
     def update_status_bar(self, stats, total_files):
+        """Updates the status bar with current database stats. Formats nicely."""
         # Helper to format each section
         def fmt_stat(name, model_key, data):
             # 1. Status Icon
             is_loaded = self.models.get(model_key) and self.models[model_key].loaded
             icon = "✦" if is_loaded else "✧"
-            
             # 2. Safe Data Extraction (Handle potential missing keys)
             p = data.get("PENDING", 0)
             d = data.get("DONE", 0)
             f = data.get("FAILED", 0)
-            rows = data.get("DB_ROWS", 0)
-            
+            rows = data.get("DB_ROWS", 0)            
             return f"[{name} {icon}] {100*((d+f)/(d+f+p)):.2f}%"  # Percentage completion
 
         # Build the sections
@@ -809,10 +788,8 @@ class MainWindow(QMainWindow):
         s_ocr = fmt_stat("OCR", "ocr", stats.get("OCR", {}))
         s_emb = fmt_stat("EMBED", "text", stats.get("EMBED", {}))
         s_llm = fmt_stat("LLM", "llm", stats.get("LLM", {}))
-
         # Final Assembly with nice spacing
-        msg = f"FILES: {total_files:,}    |    {s_ocr}    |    {s_emb}    |    {s_llm}"
-        
+        msg = f"FILES: {total_files:,}    |    {s_ocr}    |    {s_emb}    |    {s_llm}"        
         self.status_bar.showMessage(msg)
 
     @Slot(str)
@@ -887,7 +864,7 @@ class MainWindow(QMainWindow):
             attachment = self.find_attachment()
             self.set_attachment(attachment)
 
-    def handle_filter_folder(self):
+    def handle_filter(self):
         """
         If no folder is selected: Opens directory picker.
         If folder IS selected: Clears the filter.
@@ -898,89 +875,81 @@ class MainWindow(QMainWindow):
             if folder: # If user didn't cancel
                 self.search_filter = folder
                 # Change UI to "Active Filter" state
-                # Use a "Close/X" icon
-                remove_icon = qta.icon('mdi.filter-variant-remove')
+                remove_icon = qta.icon('mdi.filter-variant-remove')  # Use a "Close/X" icon
                 self.btn_filter.setIcon(remove_icon)
                 self.btn_filter.setToolTip(f"Searching within: {folder}")
-                
         else:
             # State 2: Clear the Filter
             self.search_filter = None
-            
             # Reset UI to "Default" state
             self.btn_filter.setIcon(self.filter_icon)
             self.btn_filter.setToolTip("Searching all files")
 
     def run_search(self):
+        """The main entry point to start a search operation. Handles UI updates, worker management, and information collection."""
         query = self.search_input.toPlainText().strip()
         if not query and not self.attached_file_path:
-            # Give user the ability to get a clear slate, optional feature might remove
+            # This gives user the ability to get a clear slate, optional feature might remove
             self.doc_table.setRowCount(0)
             self.image_list.clear()
             self.llm_output.clear()
             return
-
         # Initialize data class to coordinate critical search information
-        searchfacts = SearchFacts(query=query, attachment_path=self.attached_file_path)
-
-        # 0. Log the query to search history
-        threading.Thread(target=record_search_history, args=(query,), daemon=True).start()
-        
+        searchfacts = SearchFacts(query=query, attachment_path=self.attached_file_path)        
         # 1. Stop previous worker if it's still running (prevents race conditions)
         if self.workers:
             for w in self.workers:
                 if isinstance(w, SearchWorker) and w.isRunning():
                     w.stop()
-        
         # 2. Clear UI immediately (Instant feedback)
         self.btn_send.setIcon(self.send_spin_icon)
         self.doc_table.setRowCount(0)
         self.image_list.clear()
         self.llm_output.clear()
-
-        # 3. Start Streaming Worker
+        # 3. Initialize Streaming Worker - does the actual search
         worker = SearchWorker(self.search_engine, searchfacts, self.search_filter)
-        
-        # Connect the split signals
+        # 4. Connect the split signals that return the results
         worker.text_ready.connect(self.on_text_ready)
         worker.image_stream.connect(self.on_image_stream)
-        
-        # Cleanup when totally done
+        # 5. Make sure to cleanup when totally done
         worker.finished.connect(lambda: self.cleanup_worker(worker))
         if self.models['llm'].loaded:
-            # Start RAG after search completes, because the data is needed for context
+            # Start RAG after search completes. Happens after because RAG needs search results.
             worker.finished.connect(lambda: self.start_rag_generation(searchfacts))
         else:
-            # If no LLM, reset the send button now
+            # If no LLM, reset the send button when SearchWorker is done.
             worker.finished.connect(lambda: self.btn_send.setIcon(self.send_icon))
-    
+        # 6. Start the worker!    
         self.workers.append(worker)
         worker.start()
 
     @Slot(list)
     def on_text_ready(self, text_res):
-        """Populates the text table all at once (since it's fast)"""
+        """Populates the text table all at once (since it's fast). Uses table formatting."""
         self.doc_table.setRowCount(len(text_res))
         for row, item in enumerate(text_res):
-            self.doc_table.setRowHeight(row, 60)
-            
-            score = QTableWidgetItem(f"{item['score']:.2f}")
-            score.setForeground(QBrush(QColor(ACCENT_COLOR)))
-            score.setTextAlignment(Qt.AlignCenter)
-            self.doc_table.setItem(row, 0, score)
-
-            name_text = Path(item['path']).stem
-            path_text = str(item['path'])
-            name_item = QTableWidgetItem("") 
-            self.doc_table.setItem(row, 1, name_item)
-            cell_widget = self.create_file_cell_widget(name_text, path_text)
-            self.doc_table.setCellWidget(row, 1, cell_widget)
-            
-            type_ = QTableWidgetItem(item.get('match_type', 'Mix').upper())
-            self.doc_table.setItem(row, 2, type_)
-            path_item = QTableWidgetItem(path_text)
-            path_item.setData(Qt.UserRole, item)
-            self.doc_table.setItem(row, 3, path_item)
+            try:
+                self.doc_table.setRowHeight(row, 60)
+                # Score Item
+                score = QTableWidgetItem(f"{item['score']:.2f}")
+                score.setForeground(QBrush(QColor(ACCENT_COLOR)))
+                score.setTextAlignment(Qt.AlignCenter)
+                self.doc_table.setItem(row, 0, score)
+                # Name Item
+                name_text = Path(item['path']).stem
+                path_text = str(item['path'])
+                name_item = QTableWidgetItem("") 
+                self.doc_table.setItem(row, 1, name_item)
+                cell_widget = self.create_file_cell_widget(name_text, path_text)
+                self.doc_table.setCellWidget(row, 1, cell_widget)
+                # Type Item
+                type_ = QTableWidgetItem(item.get('match_type', 'Mix').upper())
+                self.doc_table.setItem(row, 2, type_)
+                path_item = QTableWidgetItem(path_text)
+                path_item.setData(Qt.UserRole, item)
+                self.doc_table.setItem(row, 3, path_item)
+            except Exception as e:
+                logger.error(f"Error displaying text result: {e}")
 
     @Slot(dict, QImage)
     def on_image_stream(self, item, qimg):
@@ -993,50 +962,42 @@ class MainWindow(QMainWindow):
                 # Fallback for failed loads
                 pixmap = QPixmap(180, 140)
                 pixmap.fill(QColor(BG_LIGHT))
-
+            # Create the QListWidgetItem with icon and text
             icon = QIcon()
             icon.addPixmap(pixmap, QIcon.Mode.Normal)
-            icon.addPixmap(pixmap, QIcon.Mode.Selected)
+            icon.addPixmap(pixmap, QIcon.Mode.Selected)  # This was needed to fix an error where the highlighted icon was magenta
             list_item = QListWidgetItem(icon, Path(item['path']).name)
             list_item.setData(Qt.UserRole, item)
-            self.image_list.addItem(list_item)
-            
+            self.image_list.addItem(list_item)            
         except Exception as e: 
             logger.error(f"Error displaying stream image: {e}")
 
-    # 1. Trigger the RAG Process
     def start_rag_generation(self, searchfacts):
         # A. Stop any existing LLM generation
         if self.workers:
             for w in self.workers:
                 if isinstance(w, LLMWorker) and w.isRunning():
                     w.stop()
-
         # B. Clear Output
         self.accumulated_markdown = ""
-
         # C. Start the Worker
         worker = LLMWorker(self.models['llm'], searchfacts, self.config)
-        
-        worker.chunk_ready.connect(self.update_llm_output)
+        worker.chunk_ready.connect(self.update_llm_output)  # Next function
         worker.finished.connect(lambda: self.cleanup_worker(worker))
-        worker.finished.connect(lambda: self.btn_send.setIcon(self.send_icon))
-        
+        worker.finished.connect(lambda: self.btn_send.setIcon(self.send_icon))  # Reset icon when done
         self.workers.append(worker)
         worker.start()
 
-    # 2. Handle the Stream (The Slot)
     @Slot(str)
     def update_llm_output(self, chunk):
+        """Handles the LLM response Stream (The Slot). Updates the QTextBrowser while preserving scroll state. Uses cryptic regex to fix local file links."""
         if not chunk: return
         self.accumulated_markdown += chunk
-        
         # 1. Capture Scroll State BEFORE updating
         sb = self.llm_output.verticalScrollBar()
-        # "At bottom" means we are within 10 pixels of the max scroll
+        # "At bottom" means user is within 10 pixels of the max scroll - use this to stop annoying forced scrolling
         was_at_bottom = sb.value() >= (sb.maximum() - 10)
         previous_scroll_val = sb.value()
-
         # --- HELPER: Convert Windows path to valid URI ---
         def path_to_uri(match):
             text = match.group(1)   
@@ -1049,35 +1010,34 @@ class MainWindow(QMainWindow):
                 return f"{text}({uri})"
             except Exception:
                 return match.group(0)
-
-        # Regex to fix links
+        # Cryptic regex to fix links. I don't know how it works; it just does.
         pat = r'(\[[^\]]*\])\(([^()]*(?:\([^()]*\)[^()]*)*)\)'
         fixed_md = re.sub(pat, path_to_uri, self.accumulated_markdown)
-        
+        # Convert to HTML markdown
         html = markdown.markdown(fixed_md)
-        
         # 2. Update the Text
         self.llm_output.setHtml(html)
-        
         # 3. Restore Scroll State (Smart Scroll)
         if was_at_bottom:
-            # If we were at the bottom, keep auto-scrolling to show new text
+            # If at the bottom, keep auto-scrolling to show new text
             sb.setValue(sb.maximum())
         else:
-            # If we were reading earlier text, stay there (don't jump)
+            # If reading earlier text, stay there (don't jump)
             sb.setValue(previous_scroll_val)
 
     # --- MODEL & TRAY LOGIC ---
 
     def toggle_model(self, key):
+        """Toggles loading/unloading of a model in a separate thread using ModelToggleWorker."""
         current = False
+        # Find current state
         if key == 'ocr': current = self.models['ocr'].loaded
         elif key == 'embed': current = self.models['text'].loaded
         elif key == 'llm': current = self.models['llm'].loaded
         elif key == 'screenshotter': current = self.models['screenshotter'].loaded
-        
+        # Decide action based on state
         action = "unload" if current else "load"
-        
+        # Start the worker
         worker = ModelToggleWorker(self.models, key, action)
         worker.finished.connect(self.on_model_toggle_done)
         worker.finished.connect(lambda: self.cleanup_worker(worker))
@@ -1086,6 +1046,7 @@ class MainWindow(QMainWindow):
 
     @Slot(str, bool)
     def on_model_toggle_done(self, key, success):
+        """Updates the UI after model load/unload is complete. Also resumes pending tasks if loading succeeded."""
         state = "Ready" if success else "Failed"
         # Refresh the tray menu text to reflect the new state
         self.update_tray_menu()
@@ -1100,15 +1061,15 @@ class MainWindow(QMainWindow):
             }
             # Get the uppercase DB type (e.g., 'OCR')
             task_type = key_map.get(key)
-            
+            # Load in separate thread to avoid blocking UI
             if task_type:
                 # Tell Orchestrator to scan DB for sleeping tasks of this type
                 threading.Thread(target=self.orchestrator.resume_pending, args=(task_type,),  daemon=True).start()
 
     def setup_tray(self):
+        """Creates the system tray icon and menu with actions. Should probably be higher up."""
         self.tray_icon = QSystemTrayIcon(self)
         self.tray_icon.setIcon(QIcon(self.icon_path))
-        
         self.tray_menu = QMenu()
         custom_style = f"""
             QMenu {{
@@ -1134,34 +1095,28 @@ class MainWindow(QMainWindow):
             }}
         """
         self.tray_menu.setStyleSheet(custom_style)
-        
+        # SHOW APPLICATION BUTTON
         show_action = QAction("Open", self)
-        # Make it bold
         font = QFont()
-        font.setBold(True)
+        font.setBold(True)  # Make it bold
         show_action.setFont(font)
         show_action.triggered.connect(self.show)
-
         # Screenshotting software ("Windows Recall")
         self.act_screenshot = QAction("Start Screen Capture", self)
         self.act_screenshot.triggered.connect(lambda: self.toggle_model('screenshotter'))
-        
-        # Model Actions
+        # LOAD/UNLOAD MODEL BUTTONS
         self.act_ocr = QAction("Load OCR", self)
         self.act_ocr.triggered.connect(lambda: self.toggle_model('ocr'))
-        
         self.act_embed = QAction("Load Embedders", self)
         self.act_embed.triggered.connect(lambda: self.toggle_model('embed'))
-        
         self.act_llm = QAction("Load LLM", self)
         self.act_llm.triggered.connect(lambda: self.toggle_model('llm'))
-
+        # QUIT BUTTON
         quit_action = QAction("Quit", self)
-        # Make it bold
         show_action.setFont(font)
         quit_action.setFont(font)
         quit_action.triggered.connect(QApplication.quit)
-
+        # Set it all up
         self.tray_menu.addAction(show_action)
         self.tray_menu.addSeparator()
         self.tray_menu.addAction(self.act_screenshot)
@@ -1171,28 +1126,28 @@ class MainWindow(QMainWindow):
         self.tray_menu.addAction(self.act_llm)
         self.tray_menu.addSeparator()
         self.tray_menu.addAction(quit_action)
-
+        # Attach the menu to the tray icon
         self.tray_icon.setContextMenu(self.tray_menu)
         self.tray_icon.activated.connect(self.on_tray_activated)
         self.tray_icon.show()
-        
         # Initial State Check
         self.update_tray_menu()
 
     def update_tray_menu(self):
         """Updates the labels based on loaded state"""
+        # Find current states
         ocr_loaded = self.models['ocr'].loaded
         embed_loaded = self.models['text'].loaded
         llm_loaded = self.models.get('llm') and self.models['llm'].loaded
         screenshotter_loaded = self.models.get('screenshotter') and self.models['screenshotter'].loaded
-        
+        # Set the text accordingly for the 4 buttons
         self.act_screenshot.setText("Stop Screen Capture" if screenshotter_loaded else "Start Screen Capture")
-
         self.act_ocr.setText("Unload OCR" if ocr_loaded else "Load OCR")
         self.act_embed.setText("Unload Embedders" if embed_loaded else "Load Embedders")
         self.act_llm.setText("Unload LLM" if llm_loaded else "Load LLM")
 
     def on_tray_activated(self, reason):
+        """Just manages visibility."""
         if reason == QSystemTrayIcon.Trigger:
             if self.isVisible():
                 self.hide()
@@ -1201,15 +1156,16 @@ class MainWindow(QMainWindow):
                 self.activateWindow()
 
     def closeEvent(self, event):
+        """Just manages minimizing to tray instead of quitting."""
         if self.tray_icon.isVisible():
             self.hide()
             event.ignore()
         else:
             event.accept()
 
-    def open_file_from_table(self, item):
+    def open_results_dialog_from_table(self, item):
+        """Allows the user to open a detailed results dialog from the text table view."""
         # The data is stored in Column 3 (the hidden path column)
-        # Note: 'item' here is whichever cell was clicked. We need the item from col 3.
         row = item.row()
         path_item = self.doc_table.item(row, 3)
         data = path_item.data(Qt.UserRole)
@@ -1217,7 +1173,8 @@ class MainWindow(QMainWindow):
         dialog = ResultDetailsDialog(data, self)
         dialog.exec()
 
-    def open_file_from_list(self, item):
+    def open_results_dialog_from_list(self, item):
+        """Allows the user to open a detailed results dialog from the image list view."""
         # The data is stored directly in the item's UserRole
         data = item.data(Qt.UserRole)
         
@@ -1231,10 +1188,9 @@ class MainWindow(QMainWindow):
 
     def save_config(self):
         """Reads values from UI inputs and writes to config.json"""        
-        # Update self.config from the UI fields we stored
+        # Update self.config from the UI fields stored.
         for key, widget in self.config_widgets.items():
             val = widget.text().strip()
-            
             # 1. Handle Booleans
             if val.lower() == 'true':
                 val = True
@@ -1247,10 +1203,8 @@ class MainWindow(QMainWindow):
                 except (ValueError, SyntaxError):
                     # 3. Fallback to string if it's just plain text
                     pass
-            
             self.config[key] = val
-
-        # Write to file
+        # Write to file.
         try:
             with open("config.json", "w") as f:
                 json.dump(self.config, f, indent=4)
@@ -1259,12 +1213,10 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage(f"Failed to save config: {e}", 5000)
 
     def run_db_action(self, action_type, service_key=None):
-        """Runs the DB worker, with a confirmation for destructive actions."""
-        
+        """Runs the DB worker from the Settings page to do certain actions, with a confirmation for destructive actions."""
         # 1. Check if this is a 'Danger' action (Resetting service data)
         if action_type == 'reset_service':
             from PySide6.QtWidgets import QMessageBox
-            
             # Create the 'Are you sure?' box
             msg_box = QMessageBox(self)
             msg_box.setWindowTitle("Confirm Data Reset")
@@ -1273,16 +1225,12 @@ class MainWindow(QMainWindow):
             msg_box.setIcon(QMessageBox.Warning)
             msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.Cancel)
             msg_box.setDefaultButton(QMessageBox.Cancel)
-            
             # Show the box and capture the user's choice
             choice = msg_box.exec()
-            
             if choice == QMessageBox.Cancel:
                 return  # Exit early; do nothing
-
         # 2. Proceed with the worker if confirmed (or if it's not a danger action)
         worker = DatabaseActionWorker(self.search_engine.db, self.orchestrator, action_type, service_key)
-        
         worker.finished.connect(lambda msg: self.status_bar.showMessage(msg, 4000))
         worker.finished.connect(lambda: self.cleanup_worker(worker))
         self.workers.append(worker)
@@ -1295,14 +1243,12 @@ class MainWindow(QMainWindow):
         self.settings_layout.addWidget(lbl)
 
     def add_live_setting_row(self, title, subtitle, callback, color):
-        """Creates a row with Title, Subtitle, and an Action Button"""
+        """Creates a row with Title, Subtitle, and an Action Button for the settings."""
         frame = QFrame()
         frame.setStyleSheet(f"background-color: {BG_LIGHT}; border-radius: 6px;")
         frame.setFixedHeight(60)
-        
         layout = QHBoxLayout(frame)
         layout.setContentsMargins(15, 0, 15, 0)
-        
         # Text
         text_layout = QVBoxLayout()
         text_layout.setSpacing(2)
@@ -1315,7 +1261,6 @@ class MainWindow(QMainWindow):
         s.setStyleSheet("color: #888; border: none; background: transparent;")
         text_layout.addWidget(t)
         text_layout.addWidget(s)
-        
         # Button
         btn_text_color = "white"
         btn = QPushButton("Execute")
@@ -1325,29 +1270,25 @@ class MainWindow(QMainWindow):
             QPushButton:hover {{ background-color: {color}; }}
         """)
         btn.clicked.connect(callback)
-
+        # Assemble
         layout.addLayout(text_layout)
         layout.addStretch()
         layout.addWidget(btn)
-        
         self.settings_layout.addWidget(frame)
-        return btn
+        return btn  # So that the text can be updated later
 
     def add_config_row(self, key, value):
-        """Creates a row with Key Label and an Input Field"""
+        """Creates a row with Key Label and an Input Field based on config.json"""
         frame = QFrame()
         frame.setStyleSheet(f"background-color: {BG_LIGHT}; border-radius: 6px;")
         frame.setFixedHeight(50)
-        
         layout = QHBoxLayout(frame)
         layout.setContentsMargins(15, 0, 15, 0)
-        
         # Label (Clean up the key name: 'ocr_backend' -> 'OCR Backend')
         clean_name = key.replace("_", " ").title()
         lbl = QLabel(clean_name)
         lbl.setFont(QFont("Segoe UI", 11))
         lbl.setStyleSheet("border: none; background: transparent;")
-        
         # Input
         inp = QLineEdit(str(value))
         inp.setAlignment(Qt.AlignRight)
@@ -1359,14 +1300,12 @@ class MainWindow(QMainWindow):
             padding: 4px;
         """)
         inp.setFixedWidth(500)
-        
         # Store for saving later
         self.config_widgets[key] = inp
-        
+        # Assemble
         layout.addWidget(lbl)
         layout.addStretch()
         layout.addWidget(inp)
-        
         self.settings_layout.addWidget(frame)
 
     def update_button_states(self):
@@ -1376,19 +1315,17 @@ class MainWindow(QMainWindow):
             self.btn_ocr_toggle.setText("Unload")
         else:
             self.btn_ocr_toggle.setText("Load")
-
         # EMBED (Checks the 'text' model as proxy for both)
         if self.models['text'].loaded:
             self.btn_embed_toggle.setText("Unload")
         else:
             self.btn_embed_toggle.setText("Load")
-
         # LLM
         if self.models.get('llm') and self.models['llm'].loaded:
             self.btn_llm_toggle.setText("Unload")
         else:
             self.btn_llm_toggle.setText("Load")
-
+        # Screenshotter / Screen Capture
         if self.models.get('screenshotter') and self.models['screenshotter'].loaded:
             self.btn_screenshotter_toggle.setText("Stop")
         else:

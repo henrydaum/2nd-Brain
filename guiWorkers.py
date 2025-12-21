@@ -19,19 +19,7 @@ logger = logging.getLogger("GUIWorkers")
 BASE_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = Path(os.getenv('LOCALAPPDATA')) / "2nd Brain"
 
-# To save a search history:
-def record_search_history(query):
-    log_file = DATA_DIR / "search_history.csv"
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    try:
-        with open(log_file, mode='a', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow([timestamp, query])
-    except Exception as e:
-        logger.error(f"Failed to log search: {e}")
-
-# --- HELPER: THREAD-SAFE IMAGE LOADER ---
+# Thread-safe image loading
 def load_qimage_from_path(path):
     """Loads an image from disk safely in a background thread."""
     path_str = str(path)
@@ -52,13 +40,12 @@ def load_qimage_from_path(path):
                 target_size = orig_size.scaled(QSize(200, 200), Qt.KeepAspectRatio)
                 reader.setScaledSize(target_size)
                 return reader.read()
-            return None
+        return None
     except Exception as e:
         logger.error(f"Thumbnail load failed for {path}: {e}")
         return None
 
-# --- DATACLASS FOR SEARCH ---
-
+# Data class needed to coordinate search information between threads
 @dataclass
 class SearchFacts:
     """Holds all data for a single user request and its results."""
@@ -71,28 +58,32 @@ class SearchFacts:
 # --- WORKER THREADS ---
 
 class SearchWorker(QThread):
+    """Emits search results back to the GUI thread as they are found, enabling faster UI updates."""
     text_ready = Signal(list)
     image_stream = Signal(dict, QImage)
 
-    def __init__(self, engine, searchfacts, filter_folder):
+    def __init__(self, search_engine, searchfacts, filter_folder):
         super().__init__()
-        self.engine = engine
+        self.search_engine = search_engine
         self.searchfacts = searchfacts
-        self._is_running = True
         self.filter_folder = filter_folder
 
+        self._is_running = True
+
     def run(self):
+        """Performs two hybrid seaches: one for text and one for images."""
         if not self._is_running: return
-        text_res = self.engine.hybrid_search(self.searchfacts.query, "text", top_k=30, folder_path=self.filter_folder)
-        self.text_ready.emit(text_res)
+        text_res = self.search_engine.hybrid_search(self.searchfacts.query, "text", top_k=30, folder_path=self.filter_folder)
+        self.text_ready.emit(text_res)  # Emit the entire text results at once, because they are small
 
         self.searchfacts.text_search_results = text_res
         
         if not self._is_running: return
-        image_res = self.engine.hybrid_search(self.searchfacts.query, "image", top_k=30, folder_path=self.filter_folder)
+        image_res = self.search_engine.hybrid_search(self.searchfacts.query, "image", top_k=30, folder_path=self.filter_folder)
 
         self.searchfacts.image_search_results = image_res
         
+        # Stream images one by one to avoid UI blocking
         for item in image_res:
             if not self._is_running: break
             qimg = load_qimage_from_path(item['path'])
@@ -100,64 +91,69 @@ class SearchWorker(QThread):
             self.image_stream.emit(item, qimg)
 
 class LLMWorker(QThread):
+    """Handles LLM response generation in a separate thread, emitting text chunks as they are produced. 
+    Creates the final prompt from SearchFacts."""
     chunk_ready = Signal(str) # Signal to send text back to GUI
     finished = Signal()
 
     def __init__(self, llm_model, searchfacts, config):
         super().__init__()
-        self.temperature = config['temperature']
-        self.top_n = config['top_n_llm']  # Number of top results to show LLM |
         self.llm = llm_model
         self.searchfacts = searchfacts
         self.config = config
         self._is_running = True
 
     def run(self):
-        # Assemble the final prompt from SearchFacts
-        final_prompt = ""
-        final_prompt += f"USER'S SEARCH QUERY: '{self.searchfacts.query}'\n\n" if self.searchfacts.query else "no query\n\n"
-        final_prompt += "TEXT SEARCH RESULTS:\n"
-        for i, r in enumerate(self.searchfacts.text_search_results[:self.top_n]):
-            final_prompt += f"PATH: {r['path']} | SCORE: {r['score']:.2f} | CONTENT: {r['content']}\n\n"
-        final_prompt += "\n"
-        final_prompt += "IMAGE SEARCH RESULTS:\n"
-        for i, r in enumerate(self.searchfacts.image_search_results[:self.top_n]):
-            final_prompt += f"PATH: {r['path']} | SCORE: {r['score']:.2f} | CONTENT: {r['content']}\n\n"
-        final_prompt += "\n"
-        final_prompt += f"{self.config.get('system_prompt', '')}\n\n"
-        final_prompt += f"When you cite a search result, you MUST use Markdown link format: [filename.ext](full_file_path). This allows the user to click the citation to open the file.\n\n"
-        final_prompt += f"YOUR RESPONSE:\n"
-
-        image_paths = [r['path'] for r in self.searchfacts.image_search_results[:self.top_n]]
-    
-        # Run the LLM with the final prompt
-        logger.info("Starting LLM response")
+        # If the LLM model is not loaded, exit early
         if not self.llm or not self.llm.loaded:
             # self.chunk_ready.emit("")
             self.finished.emit()
             return
 
+        temperature = self.config.get('temperature', 0.6)
+        top_n = self.config.get('top_n_llm', 5)
+
+        # Assemble the final prompt from SearchFacts.
+        final_prompt = ""
+        final_prompt += f"USER'S SEARCH QUERY: '{self.searchfacts.query}'\n\n" if self.searchfacts.query else "no query\n\n"
+        final_prompt += "TEXT SEARCH RESULTS:\n"
+        for i, r in enumerate(self.searchfacts.text_search_results[:top_n]):
+            final_prompt += f"PATH: {r['path']} | SCORE: {r['score']:.2f} | CONTENT: {r['content']}\n\n"
+        final_prompt += "\n"
+        final_prompt += "IMAGE SEARCH RESULTS:\n"
+        for i, r in enumerate(self.searchfacts.image_search_results[:top_n]):
+            final_prompt += f"PATH: {r['path']} | SCORE: {r['score']:.2f} | CONTENT: {r['content']}\n\n"
+        final_prompt += "\n"
+        final_prompt += f"{self.config.get('system_prompt', '')}\n\n"
+        final_prompt += f"When you cite a search result, you MUST use Markdown link format: [filename.ext](full_file_path). Do this exactly.\n\n"
+        final_prompt += f"YOUR RESPONSE:\n"
+
+        image_paths = [r['path'] for r in self.searchfacts.image_search_results[:top_n]]
+    
+        # Run the LLM with the final prompt
+        logger.info(f"Starting LLM response; prompt length: {len(final_prompt)} characters")
         try:
             # Iterate over the stream generator from your llmClass
             for chunk in self.llm.stream(
                 prompt=final_prompt, 
                 image_paths=image_paths, 
-                temperature=self.temperature
+                temperature=temperature
                 ):
                 if not self._is_running: 
                     break
                 # Emit the chunk to the main thread
                 self.chunk_ready.emit(chunk)
-            logger.info(f"LLM response completed")
+            logger.info(f"LLM response completed; total length: {len(final_prompt)} characters")
         except Exception as e:
-            self.chunk_ready.emit(f"\n[System] Error during generation: {e}")
+            self.chunk_ready.emit(f"\nLLM Worker error during generation: {e}")
         finally:
             self.finished.emit()
 
     def stop(self):
         self._is_running = False
 
-class StatsWorker(QThread): 
+class StatsWorker(QThread):
+    """Continuously polls the database for system stats and emits them to the GUI."""
     stats_updated = Signal(dict, int)
 
     def __init__(self, db):
@@ -206,6 +202,7 @@ class ModelToggleWorker(QThread):
             self.finished.emit(self.key, False)
 
 class DatabaseActionWorker(QThread):
+    """The GUI uses this to talk to the database to retry failed tasks or reset a service's data - settings options."""
     finished = Signal(str)
 
     def __init__(self, db, orchestrator, action_type, service_key=None):

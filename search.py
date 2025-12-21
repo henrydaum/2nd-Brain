@@ -340,6 +340,7 @@ class SearchEngine:
 
             for r in reranked_results:
                 quality = quality_map.get(r['path'], 0.5)
+                # Apply quality weighting
                 r['score'] = ((1 - quality_weight) * r['score']) + (quality_weight * quality)
 
         reranked_results.sort(key=lambda x: x['score'], reverse=True)
