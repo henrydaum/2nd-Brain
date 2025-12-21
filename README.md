@@ -112,11 +112,12 @@ Increasing `max_workers` in `config.json` maximizes thread usage, enabling GPUs 
 
 ## Coming Soon
 
-In order to enable RAG, I plan to expose an API endpoint for the search algorithm. This would enable LLMs trained for tool use to query the entire database from anywhere on your computer. I'll also make a tab next to the text and image results to make room for an LLM response. I apologize I don't have that done already.
+I plan to expose an API endpoint for the search algorithm. This would enable LLMs trained for tool use to query the entire database from anywhere on your computer.
 
 ## License
 
 This project is licensed under the MIT License.
+
 
 
 
