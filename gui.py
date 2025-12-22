@@ -754,12 +754,11 @@ class MainWindow(QMainWindow):
         self.add_live_setting_row("Retry Tasks", "Set all 'FAILED' tasks back to 'PENDING'", 
                                   lambda: self.run_db_action('retry_failed'), color="#d5b462")
         self.add_live_setting_row("Reset OCR Data", "Delete all OCR text & re-queue images", 
-                                  lambda: self.run_db_action('reset_service', 'OCR'), color="#e06c75")
+                                  lambda: self.run_db_action('reset_service', ['OCR']), color="#e06c75")
         self.add_live_setting_row("Reset Embeddings", "Delete all vectors & re-queue all files", 
-                                  lambda: self.run_db_action('reset_service', 'EMBED'), color="#e06c75")
+                                  lambda: self.run_db_action('reset_service', ['EMBED', 'EMBED_SUMMARY']), color="#e06c75")
         self.add_live_setting_row("Reset LLM Data", "Delete AI analysis & re-queue all files", 
-                                  lambda: self.run_db_action('reset_service', 'LLM'), color="#e06c75")
-
+                                  lambda: self.run_db_action('reset_service', ['LLM']), color="#e06c75")
         self.settings_layout.addSpacing(30)  # Space between sections
 
     # SETTINGS SECTION 2: CONFIGURATION (Restart Required)
@@ -1346,7 +1345,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.status_bar.showMessage(f"Failed to save config: {e}", 5000)
 
-    def run_db_action(self, action_type, service_key=None):
+    def run_db_action(self, action_type, service_keys=[]):
         """Runs the DB worker from the Settings page to do certain actions, with a confirmation for destructive actions."""
         # 1. Check if this is a 'Danger' action (Resetting service data)
         if action_type == 'reset_service':
@@ -1354,7 +1353,7 @@ class MainWindow(QMainWindow):
             # Create the 'Are you sure?' box
             msg_box = QMessageBox(self)
             msg_box.setWindowTitle("Confirm Data Reset")
-            msg_box.setText(f"Are you sure you want to reset {service_key} data?")
+            msg_box.setText(f"Are you sure you want to reset {', '.join(service_keys)} data?")
             msg_box.setInformativeText("This will delete all processed records for this service and re-queue your files. This action cannot be undone.")
             msg_box.setIcon(QMessageBox.Warning)
             msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.Cancel)
@@ -1364,7 +1363,7 @@ class MainWindow(QMainWindow):
             if choice == QMessageBox.Cancel:
                 return  # Exit early; do nothing
         # 2. Proceed with the worker if confirmed (or if it's not a danger action)
-        worker = DatabaseActionWorker(self.search_engine.db, self.orchestrator, action_type, service_key)
+        worker = DatabaseActionWorker(self.search_engine.db, self.orchestrator, action_type, service_keys)
         worker.finished.connect(lambda msg: self.status_bar.showMessage(msg, 4000))
         worker.finished.connect(lambda: self.cleanup_worker(worker))
         self.workers.append(worker)

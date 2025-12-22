@@ -300,6 +300,7 @@ class Database:
         table_map = {
             'OCR': 'ocr_results',
             'EMBED': 'embeddings',
+            'EMBED_SUMMARY': 'embeddings',
             'LLM': 'llm_analysis'
         }
         

@@ -206,12 +206,12 @@ class DatabaseActionWorker(QThread):
     """The GUI uses this to talk to the database to retry failed tasks or reset a service's data - settings options."""
     finished = Signal(str)
 
-    def __init__(self, db, orchestrator, action_type, service_key=None):
+    def __init__(self, db, orchestrator, action_type, service_keys=None):
         super().__init__()
         self.db = db
         self.orchestrator = orchestrator
         self.action_type = action_type 
-        self.service_key = service_key
+        self.service_keys = service_keys
 
     def run(self):
         try:
@@ -225,13 +225,14 @@ class DatabaseActionWorker(QThread):
                 self.finished.emit(f"Retried and re-queued {count} failed tasks.")
 
             elif self.action_type == 'reset_service':
-                self.db.reset_service_data(self.service_key)
-                pending = self.db.get_pending_tasks()
                 count = 0
-                for path, task_type in pending:
-                    if task_type == self.service_key:
-                        self.orchestrator.submit_task(task_type, path, priority=1, mtime=0)
-                        count += 1
-                self.finished.emit(f"Reset {self.service_key} and re-queued {count} tasks.")
+                for service_key in self.service_keys:
+                    self.db.reset_service_data(service_key)
+                    pending = self.db.get_pending_tasks()
+                    for path, task_type in pending:
+                        if task_type == service_key:
+                            self.orchestrator.submit_task(task_type, path, priority=1, mtime=0)
+                            count += 1
+                self.finished.emit(f"Reset {' '.join(self.service_keys)} and re-queued {count} tasks.")
         except Exception as e:
             self.finished.emit(f"Error: {e}")
