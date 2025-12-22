@@ -95,7 +95,7 @@ class EmbedService:
                 # Store (index, text_content, embedding_bytes)
                 self.db.save_embeddings(
                     job_path, 
-                    [(index, chunk_text, vector_bytes)]
+                    [(index, chunk_text, vector_bytes, self.text_model.model_name)]
                 )
                 successful_paths.add(job_path)
             except Exception as e:
@@ -147,7 +147,7 @@ class EmbedService:
                 vector_bytes = image_embeddings_numpy[i].tobytes()
                 
                 # Format: [(chunk_index=0, text_content, embedding_bytes)]
-                data = [(0, image_text_placeholder, vector_bytes)]
+                data = [(0, image_text_placeholder, vector_bytes, self.image_model.model_name)]
                 
                 # NOTE: The database should handle merging multiple save_embeddings calls for the same file, 
                 # but since we are replacing all embeddings for a file, this is fine.
@@ -160,7 +160,14 @@ class EmbedService:
         return successful_paths
 
     def run_summary_embed(self, job):
-        if not self.text_model.loaded:
+        # The model's output dimensions must match the embedding dimensions of where it is going.
+        ext = pathlib.Path(job.path).suffix.lower()
+        if ext in self.config.get('image_extensions', []):
+            model = self.image_model
+        elif ext in self.config.get('text_extensions', []):
+            model = self.text_model
+
+        if not model.loaded:
             logger.warning("Summary Embed attempted while model unloaded.")
             return False
         
@@ -170,14 +177,14 @@ class EmbedService:
                 logger.warning(f"No LLM summary found for embedding: {Path(job.path).name}")
                 return False
             
-            embedding_numpy = self.text_model.encode([summary], batch_size=1)  # Batch size of 1 is ok since these will be coming in one at a time.
+            embedding_numpy = model.encode([summary], batch_size=1)  # Batch size of 1 is ok since these will be coming in one at a time.
             if embedding_numpy is None or len(embedding_numpy) == 0:
                 logger.warning(f"Failed to get embedding for summary: {Path(job.path).name}")
                 return False
             
             vector_bytes = embedding_numpy[0].tobytes()
-            data = [(0, summary, vector_bytes)]
-            self.db.save_summary_embedding(job.path, vector_bytes)
+            data = (-1, summary, vector_bytes, model.model_name)  # Use -1 as index to indicate summary embedding
+            self.db.save_summary_embedding(job.path, data)
             logger.info(f"Successfully embedded LLM summary for: {Path(job.path).name}")
             return True
         except Exception as e:

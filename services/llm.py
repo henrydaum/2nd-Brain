@@ -57,6 +57,7 @@ class LLMService:
                 "Create a concise yet holistic summary of the image provided."
                 "Use plaintext only, no markdown or special formatting."
                 "Make sure to include keywords and main topics."
+                "Keep your response to 60 words or less."  # CLIP limitation
                 "YOUR SUMMARY:"
             )
         
@@ -77,6 +78,7 @@ class LLMService:
                 f"{display_snippet}\n\n"
                 "Use plaintext only, no markdown or special formatting."
                 "Make sure to include keywords and main topics."
+                "Consider what questions the content answers."
                 "YOUR SUMMARY:"
             )
 

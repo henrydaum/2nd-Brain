@@ -239,12 +239,12 @@ class Database:
                              (path, text, time.time()))
             self.conn.commit()
 
-    def save_embeddings(self, path, chunks_data):
-        # chunks_data = [(index, text, embedding_bytes)]
+    def save_embeddings(self, path, data):
+        # data = [(index, text, embedding_bytes, model_name), ...]
         with self.lock:
-            self.conn.execute("DELETE FROM embeddings WHERE path=?", (path,))
-            self.conn.executemany("INSERT INTO embeddings VALUES (?, ?, ?, ?, 'default')", 
-                                 [(path, *c) for c in chunks_data])
+            self.conn.execute("DELETE FROM embeddings WHERE path=? AND chunk_index != -1", (path,))
+            self.conn.executemany("INSERT INTO embeddings VALUES (?, ?, ?, ?, ?)", 
+                                 [(path, *c) for c in data])
             self.conn.commit()
 
     def save_llm_result(self, path, content, model_name="local"):
@@ -256,14 +256,14 @@ class Database:
             )
             self.conn.commit()
 
-    def save_summary_embedding(self, path, embedding_bytes):
-        with self.lock:
-            self.conn.execute("""
-                UPDATE llm_analysis 
-                SET embedding=? 
-                WHERE path=?
-            """, (embedding_bytes, path))
-            self.conn.commit()
+    def save_summary_embedding(self, path, data):
+        # data = (index, text, embedding_bytes, model_name)
+        # with self.lock:
+        #     self.conn.execute("DELETE FROM embeddings WHERE path=? AND chunk_index == -1", (path,))
+        #     self.conn.execute("INSERT INTO embeddings VALUES (?, ?, ?, ?, ?)", 
+        #                          (path, *data))
+        #     self.conn.commit()
+        ...
 
     # SEARCH FUNCTION
 
