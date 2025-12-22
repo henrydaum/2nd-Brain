@@ -142,12 +142,12 @@ class EmbedService:
         for i, job in enumerate(valid_jobs):
             try:
                 # We use a placeholder for the required text field.
-                preview_content = "[IMAGE]"
+                image_text_placeholder = "[IMAGE]"
                 
                 vector_bytes = image_embeddings_numpy[i].tobytes()
                 
                 # Format: [(chunk_index=0, text_content, embedding_bytes)]
-                data = [(0, preview_content, vector_bytes)]
+                data = [(0, image_text_placeholder, vector_bytes)]
                 
                 # NOTE: The database should handle merging multiple save_embeddings calls for the same file, 
                 # but since we are replacing all embeddings for a file, this is fine.
@@ -158,3 +158,28 @@ class EmbedService:
         
         logger.info(f"Successfully saved {len(successful_paths)} image embeddings.")
         return successful_paths
+
+    def run_summary_embed(self, job):
+        if not self.text_model.loaded:
+            logger.warning("Summary Embed attempted while model unloaded.")
+            return False
+        
+        try:
+            summary = self.db.get_llm_result(job.path)
+            if not summary:
+                logger.warning(f"No LLM summary found for embedding: {Path(job.path).name}")
+                return False
+            
+            embedding_numpy = self.text_model.encode([summary], batch_size=1)  # Batch size of 1 is ok since these will be coming in one at a time.
+            if embedding_numpy is None or len(embedding_numpy) == 0:
+                logger.warning(f"Failed to get embedding for summary: {Path(job.path).name}")
+                return False
+            
+            vector_bytes = embedding_numpy[0].tobytes()
+            data = [(0, summary, vector_bytes)]
+            self.db.save_summary_embedding(job.path, vector_bytes)
+            logger.info(f"Successfully embedded LLM summary for: {Path(job.path).name}")
+            return True
+        except Exception as e:
+            logger.error(f"Summary Embed failed for {Path(job.path).name}: {e}")
+            return False

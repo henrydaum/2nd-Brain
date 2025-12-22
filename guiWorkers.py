@@ -50,7 +50,8 @@ def load_qimage_from_path(path):
 class SearchFacts:
     """Holds all data for a single user request and its results."""
     from typing import List, Optional, Any, Dict
-    query: str
+    query: str = ""
+    negative_query: str = ""
     attachment_path: Optional[Path] = None
     image_search_results: List[Dict[str, Any]] = field(default_factory=list)
     text_search_results: List[Dict[str, Any]] = field(default_factory=list)
@@ -73,13 +74,13 @@ class SearchWorker(QThread):
     def run(self):
         """Performs two hybrid seaches: one for text and one for images."""
         if not self._is_running: return
-        text_res = self.search_engine.hybrid_search(self.searchfacts.query, "text", top_k=30, folder_path=self.filter_folder)
+        text_res = self.search_engine.hybrid_search(self.searchfacts.query, self.searchfacts.negative_query, "text", top_k=30, folder_path=self.filter_folder)
         self.text_ready.emit(text_res)  # Emit the entire text results at once, because they are small
 
         self.searchfacts.text_search_results = text_res
         
         if not self._is_running: return
-        image_res = self.search_engine.hybrid_search(self.searchfacts.query, "image", top_k=30, folder_path=self.filter_folder)
+        image_res = self.search_engine.hybrid_search(self.searchfacts.query, self.searchfacts.negative_query, "image", top_k=30, folder_path=self.filter_folder)
 
         self.searchfacts.image_search_results = image_res
         

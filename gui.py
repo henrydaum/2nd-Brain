@@ -81,6 +81,121 @@ class FileLinkBrowser(QTextBrowser):
             # Handle actual web links (http://google.com)
             QDesktopServices.openUrl(url)
 
+class AdvancedSearchDialog(QDialog):
+    """
+    A dialog for configuring search filters like specific folders and negative terms.
+    """
+    def __init__(self, current_folder, current_negative, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Search Filters")
+        self.setFixedSize(500, 250)
+        
+        # Store initial state
+        self.folder_path = current_folder
+        self.negative_query = current_negative
+        
+        # Styling
+        self.setStyleSheet(f"""
+            QDialog {{ background-color: {BG_DARK}; color: {TEXT_MAIN}; }}
+            QLabel {{ font-size: 14px; font-weight: bold; color: {ACCENT_COLOR}; }}
+            QLineEdit {{ 
+                background-color: {BG_INPUT}; 
+                border: 1px solid {OUTLINE}; 
+                border-radius: 4px; 
+                padding: 6px; 
+                color: white; 
+            }}
+            QPushButton {{ 
+                background-color: {BG_LIGHT}; 
+                border: 1px solid {OUTLINE}; 
+                border-radius: 4px; 
+                padding: 6px 12px; 
+                color: white;
+            }}
+            QPushButton:hover {{ background-color: {OUTLINE}; }}
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        # --- SECTION 1: FOLDER FILTER ---
+        layout.addWidget(QLabel("Search In Specific Folder:"))
+        
+        folder_layout = QHBoxLayout()
+        self.txt_folder = QLineEdit(self.folder_path if self.folder_path else "")
+        self.txt_folder.setReadOnly(True)
+        self.txt_folder.setPlaceholderText("All Folders (Default)")
+        self.txt_folder.setStyleSheet("border: none;")
+        
+        # SINGLE TOGGLE BUTTON
+        self.btn_folder_action = QPushButton()
+        self.btn_folder_action.setFixedWidth(40) # Small square-ish button
+        self.btn_folder_action.clicked.connect(self.handle_folder_toggle)
+        
+        folder_layout.addWidget(self.txt_folder)
+        folder_layout.addWidget(self.btn_folder_action)
+        layout.addLayout(folder_layout)
+
+        # --- SECTION 2: NEGATIVE FILTER ---
+        layout.addWidget(QLabel("Exclude Terms - Negative Search:"))
+        self.txt_negative = QLineEdit(self.negative_query if self.negative_query else "")
+        self.txt_negative.setPlaceholderText("e.g. blurry, draft, screenshots")
+        self.txt_negative.setStyleSheet("border: none;")
+        layout.addWidget(self.txt_negative)
+
+        layout.addStretch()
+
+        # --- ACTION BUTTONS ---
+        btn_layout = QHBoxLayout()
+        
+        btn_apply = QPushButton("Done")
+        btn_apply.setStyleSheet(f"""
+            QPushButton {{ background-color: {BG_DARK}; color: {ACCENT_COLOR}; border-radius: 4px; border: 1px solid {ACCENT_COLOR}; min-height: 30px; padding: 0 10px;}}
+            QPushButton:hover {{ background-color: {ACCENT_COLOR}; color: {BG_DARK}; }}
+        """)
+        btn_apply.clicked.connect(self.apply_filters)
+        
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_apply)
+        layout.addLayout(btn_layout)
+
+        # Initialize button state (Browse vs X)
+        self.update_folder_button()
+
+    def handle_folder_toggle(self):
+        """
+        If text is empty -> Open File Picker.
+        If text exists -> Clear it.
+        """
+        if self.txt_folder.text():
+            # State: CLEAR
+            self.txt_folder.clear()
+        else:
+            # State: BROWSE
+            folder = QFileDialog.getExistingDirectory(self, "Select Folder to Search In")
+            if folder:
+                self.txt_folder.setText(os.path.normpath(folder))
+        
+        # Update icon after action
+        self.update_folder_button()
+
+    def update_folder_button(self):
+        """Updates the icon and tooltip based on whether a folder is selected."""
+        if self.txt_folder.text():
+            # Show "X" to clear
+            self.btn_folder_action.setIcon(qta.icon('mdi.close'))
+            self.btn_folder_action.setToolTip("Clear Selection")
+        else:
+            # Show "Folder" icon to browse
+            self.btn_folder_action.setIcon(qta.icon('mdi.folder-open'))
+            self.btn_folder_action.setToolTip("Browse...")
+
+    def apply_filters(self):
+        self.folder_path = self.txt_folder.text().strip() or None
+        self.negative_query = self.txt_negative.text().strip() or None
+        self.accept()
+
 class ResultDetailsDialog(QDialog):
     """Sprawling class that simply displays a small window when a result is clicked with a few options and facts."""
     def __init__(self, item_data, parent=None):
@@ -219,6 +334,7 @@ class MainWindow(QMainWindow):
         self.drive_service = get_drive_service(self.config)  # Needed to open .gdoc attachments
         self.workers = []
         self.search_filter = None  # None means "Search Everything"
+        self.negative_filter = ""  # Empty means "No Negative Filter"
         self.attached_file_path = None
         
         self.setWindowTitle("Second Brain")
@@ -776,17 +892,27 @@ class MainWindow(QMainWindow):
             # 1. Status Icon
             is_loaded = self.models.get(model_key) and self.models[model_key].loaded
             icon = "✦" if is_loaded else "✧"
-            # 2. Safe Data Extraction (Handle potential missing keys)
+            # 2. Safe Data Extraction
             p = data.get("PENDING", 0)
             d = data.get("DONE", 0)
             f = data.get("FAILED", 0)
-            rows = data.get("DB_ROWS", 0)            
-            return f"[{name} {icon}] {100*((d+f)/(d+f+p)):.2f}%"  # Percentage completion
-
+            total = d + f + p
+            if total == 0:
+                pct = 100.00
+            else:
+                pct = 100 * ((d + f) / total)
+            return f"[{name} {icon}] {pct:.2f}%"
         # Build the sections
-        # Note: Map 'EMBED' stat to 'text' model key
         s_ocr = fmt_stat("OCR", "ocr", stats.get("OCR", {}))
-        s_emb = fmt_stat("EMBED", "text", stats.get("EMBED", {}))
+        # Manually sum the counts so the UI treats all embed jobs as one big job queue
+        e1 = stats.get("EMBED", {})
+        e2 = stats.get("EMBED_SUMMARY", {})
+        combined_embed = {
+            "PENDING": e1.get("PENDING", 0) + e2.get("PENDING", 0),
+            "DONE":    e1.get("DONE", 0)    + e2.get("DONE", 0),
+            "FAILED":  e1.get("FAILED", 0)  + e2.get("FAILED", 0)
+        }
+        s_emb = fmt_stat("EMBED", "text", combined_embed)
         s_llm = fmt_stat("LLM", "llm", stats.get("LLM", {}))
         # Final Assembly with nice spacing
         msg = f"FILES: {total_files:,}    |    {s_ocr}    |    {s_emb}    |    {s_llm}"        
@@ -865,37 +991,44 @@ class MainWindow(QMainWindow):
             self.set_attachment(attachment)
 
     def handle_filter(self):
-        """
-        If no folder is selected: Opens directory picker.
-        If folder IS selected: Clears the filter.
-        """
-        if self.search_filter is None:
-            # State 1: Pick a Folder
-            folder = QFileDialog.getExistingDirectory(self, "Select Folder to Search In")
-            if folder: # If user didn't cancel
-                self.search_filter = folder
-                # Change UI to "Active Filter" state
-                remove_icon = qta.icon('mdi.filter-variant-remove')  # Use a "Close/X" icon
-                self.btn_filter.setIcon(remove_icon)
-                self.btn_filter.setToolTip(f"Searching within: {folder}")
+        """Opens the Advanced Search Dialog."""
+        # Open dialog with current state
+        dialog = AdvancedSearchDialog(self.search_filter, self.negative_filter, self)
+        if dialog.exec():
+            # Retrieve new state
+            self.search_filter = dialog.folder_path
+            self.negative_filter = dialog.negative_query
+            # Update Button Visuals
+            self.update_filter_icon()
+
+    def update_filter_icon(self):
+        """Updates the filter button to show active/inactive state."""
+        has_filter = (self.search_filter is not None) or (self.negative_filter is not None)
+        if has_filter:
+            # Make it a little green
+            self.btn_filter.setIcon(qta.icon('mdi.filter-variant', color=ACCENT_COLOR))
+            # Build a helpful tooltip
+            tips = []
+            if self.search_filter: tips.append(f"Folder: {Path(self.search_filter).name}")
+            if self.negative_filter: tips.append(f"Exclude: {self.negative_filter}")
+            self.btn_filter.setToolTip(" | ".join(tips))
         else:
-            # State 2: Clear the Filter
-            self.search_filter = None
-            # Reset UI to "Default" state
-            self.btn_filter.setIcon(self.filter_icon)
-            self.btn_filter.setToolTip("Searching all files")
+            # Default State
+            self.btn_filter.setIcon(self.filter_icon) # The original icon
+            self.btn_filter.setToolTip("Filter Search")
 
     def run_search(self):
         """The main entry point to start a search operation. Handles UI updates, worker management, and information collection."""
         query = self.search_input.toPlainText().strip()
-        if not query and not self.attached_file_path:
+        # Easter Egg: a search can be done with just a negative filter.
+        if not query and not self.attached_file_path and not self.negative_filter:
             # This gives user the ability to get a clear slate, optional feature might remove
             self.doc_table.setRowCount(0)
             self.image_list.clear()
             self.llm_output.clear()
             return
         # Initialize data class to coordinate critical search information
-        searchfacts = SearchFacts(query=query, attachment_path=self.attached_file_path)        
+        searchfacts = SearchFacts(query=query, negative_query=self.negative_filter, attachment_path=self.attached_file_path)
         # 1. Stop previous worker if it's still running (prevents race conditions)
         if self.workers:
             for w in self.workers:
@@ -1047,24 +1180,25 @@ class MainWindow(QMainWindow):
     @Slot(str, bool)
     def on_model_toggle_done(self, key, success):
         """Updates the UI after model load/unload is complete. Also resumes pending tasks if loading succeeded."""
-        state = "Ready" if success else "Failed"
         # Refresh the tray menu text to reflect the new state
         self.update_tray_menu()
         self.update_button_states()
         # Resume pending tasks
         if success:
-            # Map the GUI key ('ocr', 'embed', 'llm') to the DB Task Type
+            # CHANGE: Map keys to LISTS of task types
+            # 'embed' now wakes up both standard embedding tasks AND summary embedding tasks
             key_map = {
-                'ocr': 'OCR', 
-                'embed': 'EMBED', 
-                'llm': 'LLM'
+                'ocr': ['OCR'], 
+                'embed': ['EMBED', 'EMBED_SUMMARY'], 
+                'llm': ['LLM']
             }
-            # Get the uppercase DB type (e.g., 'OCR')
-            task_type = key_map.get(key)
-            # Load in separate thread to avoid blocking UI
-            if task_type:
-                # Tell Orchestrator to scan DB for sleeping tasks of this type
-                threading.Thread(target=self.orchestrator.resume_pending, args=(task_type,),  daemon=True).start()
+            task_types = key_map.get(key, [])
+            # Spawn a single background thread to wake them up sequentially
+            def wake_up_worker():
+                for t_type in task_types:
+                    self.orchestrator.resume_pending(t_type)
+            if task_types:
+                threading.Thread(target=wake_up_worker, daemon=True).start()
 
     def setup_tray(self):
         """Creates the system tray icon and menu with actions. Should probably be higher up."""

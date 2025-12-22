@@ -71,14 +71,14 @@ class Database:
                 )
             """)
 
-            # 3. LLM Analysis
+            # 3. LLM Summaries / Analyses
             self.conn.execute("""
                 CREATE TABLE IF NOT EXISTS llm_analysis (
                     path TEXT PRIMARY KEY,
-                    analysis_type TEXT,
                     content TEXT,
                     model_name TEXT,
                     updated_at REAL,
+                    embedding BLOB,
                     FOREIGN KEY(path) REFERENCES tasks(path) ON DELETE CASCADE
                 )
             """)
@@ -177,14 +177,11 @@ class Database:
             cur = self.conn.execute("SELECT path, file_mtime FROM tasks")
             return {row[0]: row[1] for row in cur.fetchall()}
 
-    def get_recent_tasks(self, limit=5):
-        """Debug helper: returns the most recently updated tasks."""
+    def get_llm_result(self, path: str) -> Optional[str]:
         with self.lock:
-            cur = self.conn.execute(
-                "SELECT path, task_type, status, updated_at FROM tasks ORDER BY updated_at DESC LIMIT ?", 
-                (limit,)
-            )
-            return cur.fetchall()
+            cur = self.conn.execute("SELECT content FROM llm_analysis WHERE path=?", (path,))
+            row = cur.fetchone()
+            return row[0] if row else None
 
     def get_system_stats(self):
         """
@@ -205,6 +202,7 @@ class Database:
             stats = {
                 "OCR":   {"PENDING": 0, "DONE": 0, "FAILED": 0, "DB_ROWS": 0},
                 "EMBED": {"PENDING": 0, "DONE": 0, "FAILED": 0, "DB_ROWS": 0},
+                "EMBED_SUMMARY": {"PENDING": 0, "DONE": 0, "FAILED": 0, "DB_ROWS": 0},
                 "LLM":   {"PENDING": 0, "DONE": 0, "FAILED": 0, "DB_ROWS": 0}
             }
             
@@ -253,26 +251,37 @@ class Database:
         with self.lock:
             # FIX: Added model_name argument and passed it to the SQL query
             self.conn.execute(
-                "INSERT OR REPLACE INTO llm_analysis (path, analysis_type, content, model_name, updated_at) VALUES (?, 'quality', ?, ?, ?)", 
+                "INSERT OR REPLACE INTO llm_analysis (path, content, model_name, updated_at, embedding) VALUES (?, ?, ?, ?, NULL)", 
                 (path, content, model_name, time.time())
             )
             self.conn.commit()
 
+    def save_summary_embedding(self, path, embedding_bytes):
+        with self.lock:
+            self.conn.execute("""
+                UPDATE llm_analysis 
+                SET embedding=? 
+                WHERE path=?
+            """, (embedding_bytes, path))
+            self.conn.commit()
+
     # SEARCH FUNCTION
 
-    def search_lexical(self, query, search_type, limit=20):
-        """
-        Runs the SQL search using the specific type filter.
-        """
+    def search_lexical(self, query, negative_query, search_type, limit=20):
         with self.lock:
-            # The 'AND type = ?' clause forces the DB to only return that specific category.
+            final_match_query = query
+            if negative_query:
+                clean_neg = negative_query.strip()
+                if clean_neg:
+                    final_match_query = f"{query} NOT {clean_neg}"
+
             cur = self.conn.execute("""
                 SELECT path, content, type, bm25(search_index) as rank 
                 FROM search_index 
                 WHERE search_index MATCH ? AND type = ?
                 ORDER BY rank 
                 LIMIT ?
-            """, (query, search_type, limit))
+            """, (final_match_query, search_type, limit))
             return cur.fetchall()
 
     # GUI SETTINGS
@@ -300,7 +309,11 @@ class Database:
         with self.lock:
             # 1. Nuke the data
             self.conn.execute(f"DELETE FROM {target_table}")
-            
-            # 2. Reset the tasks so they run again
+
+            # 2. Delete EMBED_SUMMARY tasks if LLM is reset; other tasks stay the same because they are independent
+            if service_key == 'LLM':
+                self.conn.execute("DELETE FROM tasks WHERE task_type='EMBED_SUMMARY'")
+
+            # 3. Reset the tasks so they run again
             self.conn.execute("UPDATE tasks SET status='PENDING' WHERE task_type=?", (service_key,))
             self.conn.commit()

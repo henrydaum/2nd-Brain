@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 import threading
 from threading import BoundedSemaphore
+import os
 # Internal
 from services.ocr import OCRService
 from services.embed import EmbedService
@@ -216,13 +217,32 @@ class Orchestrator:
                 success = self.llm_service.run(job)
                 if success:
                     self.db.mark_completed(job.path, "LLM", "DONE")
+                    # Make the new task for embedding the summary, with high prio
+                    mtime = os.path.getmtime(job.path)
+                    self.submit_task("EMBED_SUMMARY", job.path, priority=1, mtime=mtime)
+                    # Add to queue
+                    new_job = Job(1, "EMBED_SUMMARY", job.path)
+                    self.queue.put(new_job)
+                    # logger.info("Queued a new task for summary embedding.")
                 else:
                     # FAILURE: Mark as FAILED (e.g. model was unloaded)
                     self.db.add_or_update_task(job.path, "LLM", "FAILED")
 
+            elif job.task_type == "EMBED_SUMMARY":
+                # Exit early, task stays pending for next time.
+                if not (self.models['text'].loaded):
+                    return
+                logger.info(f"Starting summary embedding for: {Path(job.path).name}")
+                success = self.embed_service.run_summary_embed(job)
+                if success:
+                    self.db.mark_completed(job.path, "EMBED_SUMMARY", "DONE")
+                else:
+                    # FAILURE: Mark as FAILED (e.g. model was unloaded)
+                    self.db.add_or_update_task(job.path, "EMBED_SUMMARY", "FAILED")
+
             elif job.task_type == "DELETE":
                 self.db.remove_task(job.path)
-                logger.info(f"✓ Deleted: {job.path}")
+                logger.info(f"✓ Deleted: {Path(job.path).name}")
 
         except Exception as e:
             logger.error(f"Task Failed: {e}")

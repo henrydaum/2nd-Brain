@@ -20,6 +20,7 @@ def mmr_rerank_hybrid(results, mmr_lambda=0.5, alpha=0.5, n_results=20):
     """
     Maximal Marginal Relevance with Hybrid (Semantic + Lexical) Diversity.
     """
+    logger.info("Running MMR...")
     if not results: return []
 
     embeddings = np.array([r["embedding"] for r in results])
@@ -135,9 +136,13 @@ class SearchEngine:
             
         return results
 
-    def get_lexical(self, query, search_type, top_k=20, folder_path=None):
+    def get_lexical(self, query, negative_query, search_type, top_k=20, folder_path=None):
         try:
-            rows = self.db.search_lexical(query, search_type, limit=top_k * 2) 
+            # Can't do a negative_query lexical search, it just doesn't work that way.
+            if not query or not query.strip():
+                return []
+
+            rows = self.db.search_lexical(query, negative_query, search_type, limit=top_k * 2) 
             
             best_per_file = {}
             paths_needing_vectors = []
@@ -189,7 +194,7 @@ class SearchEngine:
             logger.error(f"Lexical Search Failed: {e}")
             return []
 
-    def get_semantic(self, query, search_type, top_k=20, folder_path=None):
+    def get_semantic(self, query, negative_query, search_type, top_k=20, folder_path=None):
         try:
             model = self.models.get(search_type)
             if search_type == 'image':
@@ -203,12 +208,34 @@ class SearchEngine:
             prefix = "Represent this sentence for searching relevant passages: " if self.config.get('text_model_name', True) in ["BAAI/bge-small-en-v1.5", "BAAI/bge-large-en-v1.5"] else ""
             prefixed_query = prefix + query
 
-            query_embeddings = model.encode([prefixed_query])
-            if query_embeddings is None: return []
-            
-            query_vec = query_embeddings[0]
-            norm = np.linalg.norm(query_vec)
-            if norm > 0: query_vec = query_vec / norm
+            # 1. Handle Positive Query
+            pos_embedding = None
+            if query:
+                prefix = "Represent this sentence for searching relevant passages: " if self.config.get('text_model_name', True) in ["BAAI/bge-small-en-v1.5", "BAAI/bge-large-en-v1.5"] else ""
+                pos_embedding = model.encode([prefix + query])[0]
+
+            # 2. Handle Negative Query
+            neg_embedding = None
+            if negative_query:
+                neg_embedding = model.encode([negative_query])[0]
+
+            # 3. Vector Arithmetic
+            if pos_embedding is not None and neg_embedding is not None:
+                # Case A: "Dog - Blurry" (Target = Positive - Negative)
+                final_vec = pos_embedding - neg_embedding
+            elif pos_embedding is not None:
+                # Case B: "Dog" (Target = Positive)
+                final_vec = pos_embedding
+            elif neg_embedding is not None:
+                # Case C: "-Blurry" (Target = Opposite of Negative)
+                final_vec = -neg_embedding
+            else:
+                # Case D: Empty search (Shouldn't happen, but safe fallback)
+                return []
+
+            norm = np.linalg.norm(final_vec)
+            if norm > 0: query_vec = final_vec / norm
+            else: query_vec = final_vec
 
             ext_clauses = [f"path LIKE '%{ext}'" for ext in valid_exts]
             ext_query = "(" + " OR ".join(ext_clauses) + ")"
@@ -257,13 +284,14 @@ class SearchEngine:
             logger.error(f"Semantic Search Failed: {e}")
             return []
 
-    def hybrid_search(self, query, search_type, top_k=10, folder_path=None):
+    def hybrid_search(self, query, negative_query="", search_type='text', top_k=10, folder_path=None):
         """
         Main entry point.
         """
+        logger.info("Starting search...")
         fetch_k = top_k * 2
-        lex_results = self.get_lexical(query, search_type, top_k=fetch_k, folder_path=folder_path)
-        sem_results = self.get_semantic(query, search_type, top_k=fetch_k, folder_path=folder_path)
+        lex_results = self.get_lexical(query, negative_query, search_type, top_k=fetch_k, folder_path=folder_path)
+        sem_results = self.get_semantic(query, negative_query, search_type, top_k=fetch_k, folder_path=folder_path)
         
         def normalize_scores(result_list):
             if not result_list: return
@@ -323,29 +351,8 @@ class SearchEngine:
         else:
              combined_results.sort(key=lambda x: x['score'], reverse=True)
              reranked_results = combined_results[:self.config.get('num_results', 20)]
-
-        quality_weight = self.config.get('quality_weight', 0.3)
-        paths = [r['path'] for r in reranked_results]
-        if paths:
-            placeholders = ",".join(["?"] * len(paths))
-            sql = f"SELECT path, content FROM llm_analysis WHERE analysis_type='quality' AND path IN ({placeholders})"
-            quality_map = {}
-            try:
-                with self.db.lock:
-                    cur = self.db.conn.execute(sql, paths)
-                    for row in cur.fetchall():
-                        try: quality_map[row[0]] = float(row[1])
-                        except: pass
-            except Exception: pass
-
-            for r in reranked_results:
-                quality = quality_map.get(r['path'], 0.5)
-                # Apply quality weighting
-                r['score'] = ((1 - quality_weight) * r['score']) + (quality_weight * quality)
-
-        reranked_results.sort(key=lambda x: x['score'], reverse=True)
         
         # Hydrate OCR
         reranked_results = self._hydrate_ocr(reranked_results)
-        
+        logger.info("Search completed.")
         return reranked_results
