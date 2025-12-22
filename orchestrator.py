@@ -69,7 +69,7 @@ class Orchestrator:
         """Checks if the required model is online."""
         if task_type == "OCR":
             return self.models['ocr'].loaded
-        elif task_type == "EMBED":
+        elif task_type == "EMBED" or task_type == "EMBED_SUMMARY":
             return self.models['text'].loaded or self.models['image'].loaded
         elif task_type == "LLM":
             return self.models['llm'].loaded

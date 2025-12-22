@@ -10,6 +10,7 @@ except ImportError:
     # Fallback to prevent immediate crash if utils aren't ready
     def get_drive_service(config, logger): return None
     def get_text_content(file_path, drive_service, config, logger): return ""
+    print("Warning: Could not import utilities in llm.py")
 
 logger = logging.getLogger("LLMService")
 
@@ -25,7 +26,6 @@ class LLMService:
             return False
 
         path_obj = Path(job.path)
-        # Safely get model name (e.g. "gpt-4o-mini" or "local-model")
         model_name = getattr(self.model, 'model_name', 'system')
 
         logger.info(f"Analyzing: {path_obj.name}...")
@@ -39,6 +39,13 @@ class LLMService:
         image_paths = []
         prompt = ""
         
+        # Shared instructions
+        output_instructions = (
+            "\n\nOutput Format:"
+            "\nSummary: [Plain text only. NO markdown, NO bolding, NO special characters.]"
+            "\nScore: [Integer 0-100]"
+        )
+
         # A. IMAGE ANALYSIS
         if is_image:
             if not has_vision:
@@ -62,7 +69,6 @@ class LLMService:
                 logger.warning(f"✗ Skipping text file (Empty/Unreadable): {path_obj.name}")
                 return False
                 
-            # Limit context window
             MAX_SNIPPET = 4000
             display_snippet = full_text[:MAX_SNIPPET]
 
@@ -74,7 +80,6 @@ class LLMService:
                 "YOUR SUMMARY:"
             )
 
-        # C. UNSUPPORTED FILE TYPE
         else:
             logger.warning(f"✗ Skipping unsupported file: {path_obj.name}")
             return False

@@ -76,7 +76,7 @@ class SearchWorker(QThread):
         if not self._is_running: return
         text_res = self.search_engine.hybrid_search(self.searchfacts.query, self.searchfacts.negative_query, "text", top_k=30, folder_path=self.filter_folder)
         self.text_ready.emit(text_res)  # Emit the entire text results at once, because they are small
-
+        
         self.searchfacts.text_search_results = text_res
         
         if not self._is_running: return
