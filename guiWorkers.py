@@ -53,6 +53,8 @@ class SearchFacts:
     query: str = ""
     negative_query: str = ""
     attachment_path: Optional[Path] = None
+    text_attachment: str = None
+    image_attachment: str = None
     image_search_results: List[Dict[str, Any]] = field(default_factory=list)
     text_search_results: List[Dict[str, Any]] = field(default_factory=list)
 
@@ -74,18 +76,37 @@ class SearchWorker(QThread):
     def run(self):
         """Performs two hybrid seaches: one for text and one for images."""
         if not self._is_running: return
-        text_res = self.search_engine.hybrid_search(self.searchfacts.query, self.searchfacts.negative_query, "text", top_k=30, folder_path=self.filter_folder)
-        self.text_ready.emit(text_res)  # Emit the entire text results at once, because they are small
-        
-        self.searchfacts.text_search_results = text_res
-        
-        if not self._is_running: return
-        image_res = self.search_engine.hybrid_search(self.searchfacts.query, self.searchfacts.negative_query, "image", top_k=30, folder_path=self.filter_folder)
 
-        self.searchfacts.image_search_results = image_res
+        # Need to process the attachment HERE. For now leave blank.
+        if self.searchfacts.attachment_path:
+            attachment_ext = Path(self.searchfacts.attachment_path).suffix.lower()
+            if attachment_ext in self.search_engine.config['text_extensions']:
+                # Extract text here
+                ...
+            elif attachment_ext in self.search_engine.config['image_extensions']:
+                self.searchfacts.image_attachment = self.searchfacts.attachment_path
+
+        # Signify the typle of query for each query, so that the search function knows how to process it.
+        query_tuples = []
+        if self.searchfacts.query:
+            query_tuples.append(("text", self.searchfacts.query))
+        if self.searchfacts.text_attachment:
+            query_tuples.append(("text", self.searchfacts.text_attachment))
+        if self.searchfacts.image_attachment:
+            query_tuples.append(("image", self.searchfacts.image_attachment))
+
+        final_results = self.search_engine.hybrid_search(query_tuples, self.searchfacts.negative_query, top_k=30, folder_path=self.filter_folder)
+
+        text_results = final_results['text']
+        image_results = final_results['image']
+
+        self.text_ready.emit(text_results)  # Emit the entire text results at once, because they are small
+        
+        self.searchfacts.text_search_results = text_results
+        self.searchfacts.image_search_results = image_results
         
         # Stream images one by one to avoid UI blocking
-        for item in image_res:
+        for item in image_results:
             if not self._is_running: break
             qimg = load_qimage_from_path(item['path'])
             if qimg is None: qimg = QImage()

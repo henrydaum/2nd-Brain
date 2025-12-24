@@ -69,7 +69,7 @@ class Orchestrator:
         """Checks if the required model is online."""
         if task_type == "OCR":
             return self.models['ocr'].loaded
-        elif task_type == "EMBED" or task_type == "EMBED_SUMMARY":
+        elif task_type == "EMBED" or task_type == "EMBED_LLM":
             return self.models['text'].loaded or self.models['image'].loaded
         elif task_type == "LLM":
             return self.models['llm'].loaded
@@ -219,26 +219,23 @@ class Orchestrator:
                     self.db.mark_completed(job.path, "LLM", "DONE")
                     # Make the new task for embedding the summary, with high prio
                     mtime = os.path.getmtime(job.path)
-                    self.submit_task("EMBED_SUMMARY", job.path, priority=1, mtime=mtime)
-                    # Add to queue
-                    new_job = Job(1, "EMBED_SUMMARY", job.path)
-                    self.queue.put(new_job)
+                    self.submit_task("EMBED_LLM", job.path, priority=1, mtime=mtime)
                     # logger.info("Queued a new task for summary embedding.")
                 else:
                     # FAILURE: Mark as FAILED (e.g. model was unloaded)
                     self.db.add_or_update_task(job.path, "LLM", "FAILED")
 
-            elif job.task_type == "EMBED_SUMMARY":
+            elif job.task_type == "EMBED_LLM":
                 # Exit early, task stays pending for next time.
                 if not (self.models['text'].loaded):
                     return
                 logger.info(f"Starting summary embedding for: {Path(job.path).name}")
-                success = self.embed_service.run_summary_embed(job)
+                success = self.embed_service.run_embed_llm(job)
                 if success:
-                    self.db.mark_completed(job.path, "EMBED_SUMMARY", "DONE")
+                    self.db.mark_completed(job.path, "EMBED_LLM", "DONE")
                 else:
                     # FAILURE: Mark as FAILED (e.g. model was unloaded)
-                    self.db.add_or_update_task(job.path, "EMBED_SUMMARY", "FAILED")
+                    self.db.add_or_update_task(job.path, "EMBED_LLM", "FAILED")
 
             elif job.task_type == "DELETE":
                 self.db.remove_task(job.path)

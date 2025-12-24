@@ -224,8 +224,9 @@ class ResultDetailsDialog(QDialog):
         meta_layout = QHBoxLayout()
         score = item_data.get('score', 0.0)
         m_type = item_data.get('match_type', 'Unknown').upper()
+        num_hits = item_data.get('num_hits', 1)
         
-        lbl_meta = QLabel(f"<b>SCORE:</b> {score:.2f}   |   <b>TYPE:</b> {m_type}")
+        lbl_meta = QLabel(f"<b>SCORE:</b> {score:.4f}   |   <b>TYPE:</b> {m_type}   |   HITS: {num_hits}")
         lbl_meta.setStyleSheet("color: #888;")
         meta_layout.addWidget(lbl_meta)
         meta_layout.addStretch()
@@ -756,7 +757,7 @@ class MainWindow(QMainWindow):
         self.add_live_setting_row("Reset OCR Data", "Delete all OCR text & re-queue images", 
                                   lambda: self.run_db_action('reset_service', ['OCR']), color="#e06c75")
         self.add_live_setting_row("Reset Embeddings", "Delete all vectors & re-queue all files", 
-                                  lambda: self.run_db_action('reset_service', ['EMBED', 'EMBED_SUMMARY']), color="#e06c75")
+                                  lambda: self.run_db_action('reset_service', ['EMBED', 'EMBED_LLM']), color="#e06c75")
         self.add_live_setting_row("Reset LLM Data", "Delete AI analysis & re-queue all files", 
                                   lambda: self.run_db_action('reset_service', ['LLM']), color="#e06c75")
         self.settings_layout.addSpacing(30)  # Space between sections
@@ -905,7 +906,7 @@ class MainWindow(QMainWindow):
         s_ocr = fmt_stat("OCR", "ocr", stats.get("OCR", {}))
         # Manually sum the counts so the UI treats all embed jobs as one big job queue
         e1 = stats.get("EMBED", {})
-        e2 = stats.get("EMBED_SUMMARY", {})
+        e2 = stats.get("EMBED_LLM", {})
         combined_embed = {
             "PENDING": e1.get("PENDING", 0) + e2.get("PENDING", 0),
             "DONE":    e1.get("DONE", 0)    + e2.get("DONE", 0),
@@ -1188,7 +1189,7 @@ class MainWindow(QMainWindow):
             # 'embed' now wakes up both standard embedding tasks AND summary embedding tasks
             key_map = {
                 'ocr': ['OCR'], 
-                'embed': ['EMBED', 'EMBED_SUMMARY'], 
+                'embed': ['EMBED', 'EMBED_LLM'], 
                 'llm': ['LLM']
             }
             task_types = key_map.get(key, [])

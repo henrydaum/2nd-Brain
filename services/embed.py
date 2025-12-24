@@ -1,5 +1,6 @@
 import logging
 import pathlib
+import json
 from pathlib import Path
 import io
 # 3rd Party
@@ -78,6 +79,7 @@ class EmbedService:
 
         # 1. Run Text Model
         try:
+            logger.info(f"Embedding {len(text_inputs)} text chunks...")
             embeddings_numpy = self.text_model.encode(text_inputs, batch_size=self.config.get("batch_size", 11))
         except Exception as e:
             logger.error(f"Text embedding batch failed: {e}")
@@ -101,7 +103,7 @@ class EmbedService:
             except Exception as e:
                 logger.error(f"Save failed for chunk {index} in {job_path}: {e}")
 
-        logger.info(f"Successfully saved {len(successful_paths)} text embeddings.")
+        logger.info(f"Successfully saved {len(all_chunks_data)} text embeddings for {len(successful_paths)} file(s).")
         return list(successful_paths)
 
     def _run_image_batch(self, jobs):
@@ -149,8 +151,6 @@ class EmbedService:
                 # Format: [(chunk_index=0, text_content, embedding_bytes)]
                 data = [(0, image_text_placeholder, vector_bytes, self.image_model.model_name)]
                 
-                # NOTE: The database should handle merging multiple save_embeddings calls for the same file, 
-                # but since we are replacing all embeddings for a file, this is fine.
                 self.db.save_embeddings(job.path, data)
                 successful_paths.append(job.path)
             except Exception as e:
@@ -159,34 +159,34 @@ class EmbedService:
         logger.info(f"Successfully saved {len(successful_paths)} image embeddings.")
         return successful_paths
 
-    def run_summary_embed(self, job):
-        # The model's output dimensions must match the embedding dimensions of where it is going.
-        ext = pathlib.Path(job.path).suffix.lower()
-        if ext in self.config.get('image_extensions', []):
-            model = self.image_model
-        elif ext in self.config.get('text_extensions', []):
-            model = self.text_model
-
-        if not model.loaded:
-            logger.warning("Summary Embed attempted while model unloaded.")
+    def run_embed_llm(self, job):
+        if not self.text_model.loaded:
+            logger.warning("LLM Embed attempted while model unloaded.")
             return False
         
         try:
-            summary = self.db.get_llm_result(job.path)
-            if not summary:
-                logger.warning(f"No LLM summary found for embedding: {Path(job.path).name}")
+            llm_response = self.db.get_llm_result(job.path)
+
+            if not llm_response:
+                logger.warning(f"No LLM response to embed: {Path(job.path).name}")
+                return False
+
+            queries = [item.lstrip('\'\"0123456789.-• *').rstrip('\'\"') for item in llm_response.splitlines()]
+            
+            embeddings_numpy = self.text_model.encode(queries, batch_size=self.config['batch_size'])
+            if embeddings_numpy is None or len(embeddings_numpy) == 0:
+                logger.warning(f"Failed to get llm embedding: {Path(job.path).name}")
                 return False
             
-            embedding_numpy = model.encode([summary], batch_size=1)  # Batch size of 1 is ok since these will be coming in one at a time.
-            if embedding_numpy is None or len(embedding_numpy) == 0:
-                logger.warning(f"Failed to get embedding for summary: {Path(job.path).name}")
-                return False
-            
-            vector_bytes = embedding_numpy[0].tobytes()
-            data = (-1, summary, vector_bytes, model.model_name)  # Use -1 as index to indicate summary embedding
-            self.db.save_summary_embedding(job.path, data)
-            logger.info(f"Successfully embedded LLM summary for: {Path(job.path).name}")
+            data_batch = []
+            for i, query_text in enumerate(queries):
+                vector_bytes = embeddings_numpy[i].tobytes()
+                data = (-(i+1), query_text, vector_bytes, self.text_model.model_name)  # Use negative indices < 0
+                data_batch.append(data)
+            self.db.save_embeddings(job.path, data_batch)
+
+            logger.info(f"Successfully saved {len(data_batch)} LLM Embeddings for: {Path(job.path).name}")
             return True
         except Exception as e:
-            logger.error(f"Summary Embed failed for {Path(job.path).name}: {e}")
+            logger.error(f"Failed to embed LLM response: {Path(job.path).name}: {e}")
             return False

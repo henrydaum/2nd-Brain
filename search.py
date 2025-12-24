@@ -1,358 +1,289 @@
 import logging
-import re
 import os
 import numpy as np
-from pathlib import Path
+from typing import List, Dict, Optional, Tuple
 
 logger = logging.getLogger("SearchEngine")
 
-# --- HELPER: TEXT NORMALIZATION ---
-def normalize_text(text):
-    """
-    Simple tokenizer for Jaccard Similarity (Lexical Diversity).
-    """
-    if not text: return []
-    text = re.sub(r'[^a-zA-Z0-9\s]', '', text.lower())
-    return text.split()
-
-# --- HELPER: MMR RERANKING ---
-def mmr_rerank_hybrid(results, mmr_lambda=0.5, alpha=0.5, n_results=20):
-    """
-    Maximal Marginal Relevance with Hybrid (Semantic + Lexical) Diversity.
-    """
-    logger.info("Running MMR...")
-    if not results: return []
-
-    embeddings = np.array([r["embedding"] for r in results])
-    relevance_scores = np.array([r["score"] for r in results])
-    n = len(results)
-    
-    # 1. Semantic Similarity Matrix
-    semantic_sim_matrix = np.dot(embeddings, embeddings.T)
-    semantic_sim_matrix = np.clip(semantic_sim_matrix, 0, 1)
-
-    # 2. Lexical Similarity Matrix
-    token_sets = [set(normalize_text(r["content"])) for r in results]
-    lexical_sim_matrix = np.zeros((n, n))
-    
-    for i in range(n):
-        for j in range(i, n):
-            tokens1 = token_sets[i]
-            tokens2 = token_sets[j]
-            if not tokens1 and not tokens2:
-                sim = 1.0
-            else:
-                intersect = len(tokens1.intersection(tokens2))
-                union = len(tokens1.union(tokens2))
-                sim = intersect / union if union != 0 else 0.0
-            lexical_sim_matrix[i, j] = sim
-            lexical_sim_matrix[j, i] = sim
-
-    # 3. Hybrid Matrix
-    hybrid_sim_matrix = (alpha * semantic_sim_matrix) + ((1 - alpha) * lexical_sim_matrix)
-    np.fill_diagonal(hybrid_sim_matrix, -1) 
-
-    # 4. MMR Selection
-    selected_indices = []
-    remaining_indices = list(range(n))
-
-    first_idx = np.argmax(relevance_scores)
-    selected_indices.append(first_idx)
-    remaining_indices.remove(first_idx)
-
-    while len(selected_indices) < n_results and remaining_indices:
-        sims_to_selected = hybrid_sim_matrix[remaining_indices][:, selected_indices]
-        max_sim_to_selected = np.max(sims_to_selected, axis=1)
-        
-        mmr_scores = (mmr_lambda * relevance_scores[remaining_indices]) - \
-                     ((1 - mmr_lambda) * max_sim_to_selected)
-        
-        best_idx_in_remaining = np.argmax(mmr_scores)
-        best_idx = remaining_indices[best_idx_in_remaining]
-        
-        selected_indices.append(best_idx)
-        remaining_indices.remove(best_idx)
-
-    return [results[i] for i in selected_indices]
-
-
-# --- MAIN SEARCH ENGINE ---
 class SearchEngine:
     def __init__(self, db, models, config):
         self.db = db
         self.models = models
         self.config = config
 
-    def _build_path_filter(self, folder_path):
-        """Creates the SQL clause and params for folder filtering."""
-        if not folder_path or folder_path == "All":
-            return "", []
-        
-        clean_path = os.path.normpath(folder_path)
-        like_pattern = f"{clean_path}%"
-        return " AND path LIKE ?", [like_pattern]
+    # --- 'DUMB' DATA FETCHERS ---
 
-    def _hydrate_ocr(self, results):
+    def get_lexical(self, query: str, limit: int = 50) -> List[Dict]:
         """
-        Populates empty content fields for image results using OCR data from the DB.
+        Raw keyword search. Returns a list of dicts.
+        No filtering, no deduplication.
         """
-        # Identify results that need hydration
-        candidates = {}
-        for r in results:
-            # Check for image type and empty/placeholder content
-            if r.get('type') == 'image' and (not r.get('content') or r.get('content') == "[IMAGE]"):
-                # Use normalized path as key to handle slash mismatches
-                norm_path = os.path.normpath(r['path'])
-                candidates[norm_path] = r
-        
-        if not candidates:
-            return results
-
-        try:
-            # 1. Fetch from 'ocr_results' table
-            raw_paths = [r['path'] for r in candidates.values()]
-            placeholders = ",".join(["?"] * len(raw_paths))
-            
-            # FIXED: Correct Table (ocr_results) and Column (text_content)
-            sql = f"SELECT path, text_content FROM ocr_results WHERE path IN ({placeholders})"
-            
-            with self.db.lock:
-                cur = self.db.conn.execute(sql, raw_paths)
-                rows = cur.fetchall()
-            
-            # Build lookup map with NORMALIZED keys
-            text_map = {}
-            for row in rows:
-                p = os.path.normpath(row[0])
-                text_map[p] = row[1]
-                
-            # Update results
-            for norm_path, r in candidates.items():
-                if norm_path in text_map and text_map[norm_path]:
-                    r['content'] = text_map[norm_path]
-                    
-        except Exception as e:
-            logger.error(f"OCR Hydration failed: {e}")
-            
-        return results
-
-    def get_lexical(self, query, negative_query, search_type, top_k=20, folder_path=None):
-        try:
-            # Can't do a negative_query lexical search, it just doesn't work that way.
-            if not query or not query.strip():
-                return []
-
-            rows = self.db.search_lexical(query, negative_query, search_type, limit=top_k * 2) 
-            
-            best_per_file = {}
-            paths_needing_vectors = []
-            
-            filter_prefix = None
-            if folder_path and folder_path != "All":
-                filter_prefix = os.path.normpath(folder_path)
-
-            for path, content, ftype, rank in rows:
-                if filter_prefix:
-                    if not os.path.normpath(path).startswith(filter_prefix):
-                        continue
-
-                score = -1 * float(rank)
-                
-                if path not in best_per_file or score > best_per_file[path]['score']:
-                    res = {
-                        "path": path,
-                        "content": content,
-                        "type": ftype,
-                        "score": score,
-                        "method": "lexical",
-                        "match_type": "Lexical",
-                        "embedding": None 
-                    }
-                    best_per_file[path] = res
-                    if path not in paths_needing_vectors:
-                        paths_needing_vectors.append(path)
-                
-                if len(best_per_file) >= top_k: break
-
-            results = list(best_per_file.values())
-            
-            if paths_needing_vectors:
-                placeholders = ",".join(["?"] * len(paths_needing_vectors))
-                sql = f"SELECT path, embedding FROM embeddings WHERE chunk_index=0 AND path IN ({placeholders})"
-                
-                with self.db.lock:
-                    cur = self.db.conn.execute(sql, paths_needing_vectors)
-                    vec_map = {row[0]: row[1] for row in cur.fetchall()}
-                
-                for res in results:
-                    if res['path'] in vec_map:
-                        res['embedding'] = np.frombuffer(vec_map[res['path']], dtype=np.float32)
-            
-            return results
-
-        except Exception as e:
-            logger.error(f"Lexical Search Failed: {e}")
+        if not query or not query.strip():
+            logger.info("get_lexical no query")
             return []
 
-    def get_semantic(self, query, negative_query, search_type, top_k=20, folder_path=None):
         try:
-            model = self.models.get(search_type)
-            if search_type == 'image':
-                valid_exts = self.config.get('image_extensions', [])
-            else:
-                valid_exts = self.config.get('text_extensions', [])
-
-            if not model.loaded or not valid_exts: 
-                return []
-
-            prefix = "Represent this sentence for searching relevant passages: " if self.config.get('text_model_name', True) in ["BAAI/bge-small-en-v1.5", "BAAI/bge-large-en-v1.5"] else ""
-            prefixed_query = prefix + query
-
-            # 1. Handle Positive Query
-            pos_embedding = None
-            if query:
-                prefix = "Represent this sentence for searching relevant passages: " if self.config.get('text_model_name', True) in ["BAAI/bge-small-en-v1.5", "BAAI/bge-large-en-v1.5"] else ""
-                pos_embedding = model.encode([prefix + query])[0]
-
-            # 2. Handle Negative Query
-            neg_embedding = None
-            if negative_query:
-                neg_embedding = model.encode([negative_query])[0]
-
-            # 3. Vector Arithmetic
-            if pos_embedding is not None and neg_embedding is not None:
-                # Case A: "Dog - Blurry" (Target = Positive - Negative)
-                final_vec = pos_embedding - neg_embedding
-            elif pos_embedding is not None:
-                # Case B: "Dog" (Target = Positive)
-                final_vec = pos_embedding
-            elif neg_embedding is not None:
-                # Case C: "-Blurry" (Target = Opposite of Negative)
-                final_vec = -neg_embedding
-            else:
-                # Case D: Empty search (Shouldn't happen, but safe fallback)
-                return []
-
-            norm = np.linalg.norm(final_vec)
-            if norm > 0: query_vec = final_vec / norm
-            else: query_vec = final_vec
-
-            ext_clauses = [f"path LIKE '%{ext}'" for ext in valid_exts]
-            ext_query = "(" + " OR ".join(ext_clauses) + ")"
+            # - Using the updated unpack (path, content, rank)
+            rows = self.db.search_lexical(query, None, limit=limit)
             
-            sql_params = []
-            
-            filter_clause, filter_params = self._build_path_filter(folder_path)
-            if filter_clause:
-                ext_query += filter_clause
-                sql_params.extend(filter_params)
+            results = []
+            for path, content, rank in rows:
+                results.append({
+                    "path": path,
+                    "content": content,
+                    "score": -1 * float(rank), # Invert rank so higher is better
+                    "match_type": "Lexical",
+                    "embedding": None,
+                    "num_hits": 1
+                })
+            return results
 
-            sql = f"SELECT path, embedding, text_content FROM embeddings WHERE {ext_query}"
+        except Exception as e:
+            logger.error(f"Lexical Fetch Failed: {e}")
+            return []
+
+    def get_semantic(self, query_vec: np.ndarray, limit: int = 50, model_name_used: str = None) -> List[Dict]:
+        """
+        Optimized vector search. 
+        Assumes DB vectors are ALREADY normalized (which they are).
+        """
+        # 1. Quick Guard clauses
+        if query_vec is None or len(query_vec) == 0:
+            return []
+
+        try:
+            # 2. Fetch Data (Optimized Select)
+            # Only select what we need. 
+            sql = "SELECT path, text_content, embedding, model_name FROM embeddings"
             
             with self.db.lock:
-                cur = self.db.conn.execute(sql, sql_params)
+                cur = self.db.conn.execute(sql)
                 rows = cur.fetchall()
-            
+
             if not rows: return []
 
-            best_per_file = {} 
+            paths = []
+            contents_list = []
+            valid_embeddings = []
 
-            for path, blob, content in rows:
-                vec = np.frombuffer(blob, dtype=np.float32)
-                v_norm = np.linalg.norm(vec)
-                if v_norm > 0: vec = vec / v_norm
+            # 3. Filter & Unpack
+            for path, text_content, embedding, model_name in rows:
+                if embedding:
+                    # Convert bytes to numpy 
+                    vec = np.frombuffer(embedding, dtype=np.float32)
+                    
+                    # Critical Check
+                    if model_name == model_name_used:
+                        paths.append(path)
+                        contents_list.append(text_content)
+                        valid_embeddings.append(vec)
+            if not valid_embeddings:
+                return []
 
-                score = float(np.dot(query_vec, vec))
-                
-                if path not in best_per_file or score > best_per_file[path]['score']:
-                    best_per_file[path] = {
-                        "path": path,
-                        "content": content,
-                        "type": search_type,
-                        "score": score,
-                        "method": "semantic",
-                        "match_type": "Semantic",
-                        "embedding": vec 
-                    }
-            
-            results = list(best_per_file.values())
-            results.sort(key=lambda x: x['score'], reverse=True)
-            
-            return results[:top_k]
+            # 4. Create the 2D Matrix (THE FIX)
+            # We use vstack to turn a [list of 1D arrays] into a [2D Matrix]
+            # Shape becomes (Num_Docs, Embedding_Dim)
+            emb_matrix = np.vstack(valid_embeddings)
+
+            # 5. Calculate Scores (Dot Product)
+            # Since vectors are pre-normalized, Dot Product == Cosine Similarity
+            scores = np.dot(emb_matrix, query_vec)
+
+            # 6. Sort and Pack
+            # Get indices of the top scores
+            # If we have fewer results than 'limit', take them all
+            k = min(limit, len(scores))
+            top_indices = np.argsort(scores)[-k:][::-1]
+
+            results = []
+            for idx in top_indices:
+                results.append({
+                    "path": paths[idx],
+                    "content": contents_list[idx],
+                    "score": float(scores[idx]),
+                    "match_type": "Semantic",
+                    "embedding": None, # Save RAM, don't pass this back unless needed
+                    "num_hits": 1
+                })
+            return results
 
         except Exception as e:
-            logger.error(f"Semantic Search Failed: {e}")
+            logger.error(f"Semantic Fetch Failed: {e}")
             return []
 
-    def hybrid_search(self, query, negative_query="", search_type='text', top_k=10, folder_path=None):
+    # --- MAIN CONTROLLER ---
+
+    def hybrid_search(self, query_tuples, negative_query: str = "", top_k: int = 10, folder_path: str = None):
         """
-        Main entry point.
+        The Brain. Handles embedding, filtering, deduplication, and fusion.
         """
-        logger.info("Starting search...")
-        fetch_k = top_k * 2
-        lex_results = self.get_lexical(query, negative_query, search_type, top_k=fetch_k, folder_path=folder_path)
-        sem_results = self.get_semantic(query, negative_query, search_type, top_k=fetch_k, folder_path=folder_path)
+        logger.info(f"Starting hybrid search")
+
+        text_results = []
+        image_results = []
+
+        # Add stuff to the lists by searching for each query/attachment
+        for query_type, query in query_tuples:
+            
+            # 1. PREPARE RESOURCES
+            if query_type == "text":
+                text_vec = self._embed_query(query, negative_query, self.models['text']) if self.models['text'].loaded else []
+                image_vec = self._embed_query(query, negative_query, self.models['image']) if self.models['image'].loaded else []
+            elif query_type == "image":
+                text_vec = []
+                image_vec = []
+                if self.models['image'].loaded:
+                    try:
+                        from PIL import Image
+                        Image.MAX_IMAGE_PIXELS = None
+                        with Image.open(query).convert("RGB") as img:
+                            # Use CLIP to embed image directly
+                            image_vec = self.models['image'].encode(img)
+                    except Exception as e:
+                        logger.error(f"Failed to embed image {query}: {e}")
+
+            # 2. FETCH DATA (DUMB)
+            # Fetch 10x top_k to allow for collapsing chunks into docs
+            fetch_limit = max(200, top_k * 10)
+            
+            lex_raw = self.get_lexical(query, limit=fetch_limit) if query_type == "text" else []
+            text_sem_raw = self.get_semantic(text_vec, limit=fetch_limit, model_name_used=self.models['text'].model_name) if self.models['text'].loaded else []
+            image_sem_raw = self.get_semantic(image_vec, limit=fetch_limit, model_name_used=self.models['image'].model_name) if self.models['image'].loaded else []
+
+            logger.info(f"Fetched {len(lex_raw)} lexical, {len(text_sem_raw)} text semantic, {len(image_sem_raw)} image semantic.")
+            
+            streams = [lex_raw, text_sem_raw, image_sem_raw]
+
+            # 3. FILTER & DEDUPLICATE (Stream by Stream)
+            # -----------------------
+            def process_stream(raw_results):
+                processed_text = {}
+                processed_image = {}
+                
+                for res in raw_results:
+                    path = res['path']
+                    
+                    # Folder Filter
+                    if folder_path and folder_path != "All":
+                        if not os.path.normpath(path).startswith(os.path.normpath(folder_path)):
+                            continue
+
+                    # Determine type
+                    is_text = any(path.lower().endswith(ext.lower()) for ext in self.config['text_extensions'])
+                    is_image = any(path.lower().endswith(ext.lower()) for ext in self.config['image_extensions'])
+                    
+                    target_dict = None
+                    if is_text: target_dict = processed_text
+                    elif is_image: target_dict = processed_image
+                    
+                    if target_dict is not None:
+                        if path not in target_dict:
+                            # First hit for this doc in this stream
+                            res['num_hits'] = 1 
+                            target_dict[path] = res
+                        else:
+                            # We found another chunk for this doc!
+                            # 1. Increment hits on the object currently stored
+                            target_dict[path]['num_hits'] += 1
+                            
+                            # 2. If this new chunk has a better score, swap the content
+                            # but preserve the accumulated hit count we just updated.
+                            if res['score'] > target_dict[path]['score']:
+                                accumulated_hits = target_dict[path]['num_hits']
+                                target_dict[path] = res
+                                target_dict[path]['num_hits'] = accumulated_hits
+                
+                return list(processed_text.values()), list(processed_image.values())
+
+            for stream in streams:
+                if not stream: continue
+                p_text, p_image = process_stream(stream)
+                text_results.append(p_text)
+                image_results.append(p_image)
+
+        # 4. RECIPROCAL RANK FUSION (RRF)
+        # -------------------------------
         
-        def normalize_scores(result_list):
-            if not result_list: return
-            scores = np.array([r['score'] for r in result_list])
-            if scores.max() == scores.min():
-                norm_scores = np.ones_like(scores)
-            else:
-                norm_scores = (scores - scores.min()) / (scores.max() - scores.min())
-            for i, r in enumerate(result_list):
-                r['score'] = float(norm_scores[i])
+        merged_scores = {'text': {}, 'image': {}}
+        merged_docs = {'text': {}, 'image': {}}
+        rrf_constant = 60
 
-        normalize_scores(lex_results)
-        normalize_scores(sem_results)
-
-        combined_map = {}
-        def merge_in(results):
-            for r in results:
-                key = r['path']
-                match_type = r['match_type']
-                if key not in combined_map:
-                    combined_map[key] = r
+        def apply_rrf_rank(results_list, media_type):
+            # Sort by score descending to establish rank for this specific stream
+            results_list.sort(key=lambda x: x['score'], reverse=True)
+            
+            for rank, item in enumerate(results_list):
+                path = item['path']
+                
+                if path not in merged_docs[media_type]:
+                    # New doc for the final list
+                    merged_docs[media_type][path] = item
                 else:
-                    existing = combined_map[key]
-                    existing['score'] = (existing['score'] + r['score']) / 2.0
-                    existing['match_type'] = "Hybrid"
+                    # Doc already found in a previous stream (e.g. was in Lexical, now in Semantic)
+                    stored_doc = merged_docs[media_type][path]
+                    
+                    # A. Mark as Hybrid
+                    if stored_doc['match_type'] != item['match_type']:
+                        stored_doc['match_type'] = "Hybrid"
+                    
+                    # B. MERGE HITS (This is what you were missing)
+                    # We add the hits from this stream to the existing total
+                    stored_doc['num_hits'] += item['num_hits']
+                    
+                    # C. Keep the highest score/content between streams (Optional but good)
+                    if item['score'] > stored_doc['score']:
+                         # Update display content to the better chunk, but keep the merged counts
+                         current_hits = stored_doc['num_hits']
+                         current_match_type = stored_doc['match_type']
+                         merged_docs[media_type][path] = item
+                         merged_docs[media_type][path]['num_hits'] = current_hits
+                         merged_docs[media_type][path]['match_type'] = current_match_type
 
-        merge_in(lex_results)
-        merge_in(sem_results)
-        
-        combined_results = list(combined_map.values())
+                # RRF Math
+                if path not in merged_scores[media_type]: merged_scores[media_type][path] = 0.0
+                merged_scores[media_type][path] += 1 / (rrf_constant + rank + 1)
 
-        model = self.models.get(search_type)
-        if model and getattr(model, 'loaded', False):
-            missing_indices = [i for i, r in enumerate(combined_results) if r['embedding'] is None]
-            if missing_indices:
-                try:
-                    texts = [str(combined_results[i]['content']) for i in missing_indices]
-                    if texts:
-                        embeddings = model.encode(texts)
-                        if embeddings is not None:
-                            for idx, vec in zip(missing_indices, embeddings):
-                                norm = np.linalg.norm(vec)
-                                if norm > 0: vec = vec / norm
-                                combined_results[idx]['embedding'] = vec
-                except Exception as e:
-                    logger.warning(f"On-the-fly embedding failed: {e}")
+        logger.info("Applying RRF")
+        for r in text_results: apply_rrf_rank(r, "text")
+        for r in image_results: apply_rrf_rank(r, "image")
 
-        can_run_mmr = all(r['embedding'] is not None for r in combined_results)
-        
-        if can_run_mmr and combined_results:
-             reranked_results = mmr_rerank_hybrid(
-                combined_results, 
-                mmr_lambda=self.config.get('mmr_lambda', 0.7),
-                alpha=self.config.get('mmr_alpha', 0.5),
-                n_results=self.config.get('num_results', 20)
-            )
-        else:
-             combined_results.sort(key=lambda x: x['score'], reverse=True)
-             reranked_results = combined_results[:self.config.get('num_results', 20)]
-        
-        # Hydrate OCR
-        reranked_results = self._hydrate_ocr(reranked_results)
-        logger.info("Search completed.")
-        return reranked_results
+        # 5. FINALIZE
+        final_results = {'text': [], 'image': []}
+
+        for media_type in ['text', 'image']:
+            # Sort paths by their final RRF score
+            sorted_paths = sorted(merged_scores[media_type].keys(), 
+                                key=lambda x: merged_scores[media_type][x], 
+                                reverse=True)
+            
+            for path in sorted_paths[:top_k]:
+                doc = merged_docs[media_type][path]
+                doc['score'] = merged_scores[media_type][path]
+                final_results[media_type].append(doc)
+
+        logger.info("Search concluded.")
+        return final_results
+
+    def _embed_query(self, query, negative_query, model):
+        """Helper to create the query vector."""
+        try:
+            # BGE models need specific instructions
+            needs_prefix = self.config.get('text_model_name', "") in ["BAAI/bge-small-en-v1.5", "BAAI/bge-large-en-v1.5"]
+            prefix = "Represent this sentence for searching relevant passages: " if needs_prefix else ""
+
+            pos_vec = model.encode([prefix + query])[0] if query else None
+            neg_vec = model.encode([prefix + negative_query])[0] if negative_query else None
+
+            final_vec = pos_vec
+            if pos_vec is not None and neg_vec is not None:
+                final_vec = pos_vec - neg_vec
+            elif neg_vec is not None:
+                final_vec = -neg_vec 
+            
+            if final_vec is None: return None
+
+            norm = np.linalg.norm(final_vec)
+            return final_vec / norm if norm > 0 else final_vec
+        except Exception as e:
+            logger.error(f"embed_query error: {e}")
+            return None

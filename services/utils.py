@@ -78,15 +78,21 @@ class RecursiveTokenSplitter:
 
 # --- GIBBERISH CHECKER (From SecondBrainBackend.py) ---
 
-def is_gibberish(text, min_len=15, non_standard_threshold=0.15, low_compression_threshold=0.1, high_compression_threshold=0.95):
+# services/utils.py
+
+def is_gibberish(text, min_len=25, non_standard_threshold=0.05, low_compression_threshold=0.1, high_compression_threshold=0.9):
     """
-    Returns true if the text is gibberish based on multiple heuristics:
-    1. Too short. 2. Too many non-printable characters. 3. Compression ratio checks.
+    Stricter gibberish filter. Returns true if the text is low quality.
     """
     if not text or len(text) < min_len:
         return True
     
-    # Non-standard character check
+    # 1. Whitespace Check (Real text usually has spaces)
+    # If spaces make up less than 5% of the text, it's likely a URL, hash, or code dump.
+    if text.count(' ') / len(text) < 0.05:
+        return True
+
+    # 2. Non-standard character check
     try:
         normalized_text = unicodedata.normalize("NFKC", text)
     except Exception:
@@ -100,17 +106,17 @@ def is_gibberish(text, min_len=15, non_standard_threshold=0.15, low_compression_
     if (non_standard / total) > non_standard_threshold:
         return True
         
-    # Compression check
+    # 3. Compression check
     try:
         text_bytes = normalized_text.encode('utf-8', 'ignore')
         if not text_bytes: return True
         compressed_len = len(zlib.compress(text_bytes, level=9))
         compression_ratio = compressed_len / len(text_bytes)
         
-        # Too repetitive
+        # Too repetitive (e.g. "..............")
         if compression_ratio < low_compression_threshold:
             return True
-        # Too random (length gate added for reliability)
+        # Too random (e.g. Encrypted strings or high entropy garbage)
         if len(text_bytes) > 100 and compression_ratio > high_compression_threshold:
             return True
     except Exception:
@@ -133,6 +139,7 @@ def process_text_file(file_path: pathlib.Path, drive_service, config, text_split
         
         # 5. Filter (Prefix removed)
         final_chunks = []
+        gibberish_counter = 0
         
         for i, chunk in enumerate(chunks):
             chunk = chunk.lstrip('. ')
@@ -140,7 +147,11 @@ def process_text_file(file_path: pathlib.Path, drive_service, config, text_split
                 # Just store the raw chunk. 
                 # The DB Trigger handles the filename association for search.
                 final_chunks.append((i, chunk))
-                
+            else:
+                gibberish_counter += 1
+        
+        if gibberish_counter > 0:
+            logger.info(f"Removed {gibberish_counter} gibberish chunks from {file_path.name}")
         return final_chunks
     except Exception as e:
         logger.error(f"Error processing file - {file_path.name}: {e}")

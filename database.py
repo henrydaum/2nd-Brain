@@ -75,10 +75,9 @@ class Database:
             self.conn.execute("""
                 CREATE TABLE IF NOT EXISTS llm_analysis (
                     path TEXT PRIMARY KEY,
-                    content TEXT,
+                    response TEXT,
                     model_name TEXT,
                     updated_at REAL,
-                    embedding BLOB,
                     FOREIGN KEY(path) REFERENCES tasks(path) ON DELETE CASCADE
                 )
             """)
@@ -86,19 +85,17 @@ class Database:
             # SEARCH INDEX
             self.conn.execute("""
                 CREATE VIRTUAL TABLE IF NOT EXISTS search_index 
-                USING fts5(path UNINDEXED, content, type UNINDEXED);
+                USING fts5(path UNINDEXED, content, source UNINDEXED);
             """)
 
             # --- SEARCH INDEX TRIGGERS FOR AUTOMATIC SYNC ---
             # Trigger 1: TEXT - INSERT
             # Concatenates Path + Space + Content.
-            # Filters out [IMAGE] placeholders so we don't index junk.
             self.conn.execute("""
                 CREATE TRIGGER IF NOT EXISTS t_embed_insert AFTER INSERT ON embeddings
-                WHEN new.text_content NOT LIKE '[IMAGE]%' 
                 BEGIN
-                    INSERT INTO search_index (path, content, type) 
-                    VALUES (new.path, new.path || ' ' || COALESCE(new.text_content, ''), 'text');
+                    INSERT INTO search_index (path, content, source) 
+                    VALUES (new.path, new.path || ' ' || COALESCE(new.text_content, ''), 'embed');
                 END;
             """)
 
@@ -107,7 +104,7 @@ class Database:
             self.conn.execute("""
                 CREATE TRIGGER IF NOT EXISTS t_embed_delete AFTER DELETE ON embeddings
                 BEGIN
-                    DELETE FROM search_index WHERE path = old.path AND type = 'text';
+                    DELETE FROM search_index WHERE path = old.path AND source = 'embed';
                 END;
             """)
 
@@ -116,8 +113,8 @@ class Database:
             self.conn.execute("""
                 CREATE TRIGGER IF NOT EXISTS t_ocr_insert AFTER INSERT ON ocr_results
                 BEGIN
-                    INSERT INTO search_index (path, content, type) 
-                    VALUES (new.path, new.path || ' ' || COALESCE(new.text_content, ''), 'image');
+                    INSERT INTO search_index (path, content, source) 
+                    VALUES (new.path, new.path || ' ' || COALESCE(new.text_content, ''), 'ocr');
                 END;
             """)
 
@@ -125,7 +122,15 @@ class Database:
             self.conn.execute("""
                 CREATE TRIGGER IF NOT EXISTS t_ocr_delete AFTER DELETE ON ocr_results
                 BEGIN
-                    DELETE FROM search_index WHERE path = old.path AND type = 'image';
+                    DELETE FROM search_index WHERE path = old.path AND source = 'ocr';
+                END;
+            """)
+
+            # Trigger 5: MASTER CLEANUP (When file is deleted entirely)
+            self.conn.execute("""
+                CREATE TRIGGER IF NOT EXISTS t_task_delete AFTER DELETE ON tasks
+                BEGIN
+                    DELETE FROM search_index WHERE path = old.path;
                 END;
             """)
             self.conn.commit()
@@ -179,7 +184,7 @@ class Database:
 
     def get_llm_result(self, path: str) -> Optional[str]:
         with self.lock:
-            cur = self.conn.execute("SELECT content FROM llm_analysis WHERE path=?", (path,))
+            cur = self.conn.execute("SELECT response FROM llm_analysis WHERE path=?", (path,))
             row = cur.fetchone()
             return row[0] if row else None
 
@@ -202,7 +207,7 @@ class Database:
             stats = {
                 "OCR":   {"PENDING": 0, "DONE": 0, "FAILED": 0, "DB_ROWS": 0},
                 "EMBED": {"PENDING": 0, "DONE": 0, "FAILED": 0, "DB_ROWS": 0},
-                "EMBED_SUMMARY": {"PENDING": 0, "DONE": 0, "FAILED": 0, "DB_ROWS": 0},
+                "EMBED_LLM": {"PENDING": 0, "DONE": 0, "FAILED": 0, "DB_ROWS": 0},
                 "LLM":   {"PENDING": 0, "DONE": 0, "FAILED": 0, "DB_ROWS": 0}
             }
             
@@ -242,32 +247,22 @@ class Database:
     def save_embeddings(self, path, data):
         # data = [(index, text, embedding_bytes, model_name), ...]
         with self.lock:
-            self.conn.execute("DELETE FROM embeddings WHERE path=? AND chunk_index != -1", (path,))
-            self.conn.executemany("INSERT INTO embeddings VALUES (?, ?, ?, ?, ?)", 
+            self.conn.executemany("INSERT OR REPLACE INTO embeddings VALUES (?, ?, ?, ?, ?)", 
                                  [(path, *c) for c in data])
             self.conn.commit()
 
-    def save_llm_result(self, path, content, model_name="local"):
+    def save_llm_result(self, path, response, model_name="local"):
         with self.lock:
-            # FIX: Added model_name argument and passed it to the SQL query
+            # CHANGE: Now accepts and saves chunk_index
             self.conn.execute(
-                "INSERT OR REPLACE INTO llm_analysis (path, content, model_name, updated_at, embedding) VALUES (?, ?, ?, ?, NULL)", 
-                (path, content, model_name, time.time())
+                "INSERT OR REPLACE INTO llm_analysis (path, response, model_name, updated_at) VALUES (?, ?, ?, ?)", 
+                (path, response, model_name, time.time())
             )
             self.conn.commit()
 
-    def save_summary_embedding(self, path, data):
-        # data = (index, text, embedding_bytes, model_name)
-        # with self.lock:
-        #     self.conn.execute("DELETE FROM embeddings WHERE path=? AND chunk_index == -1", (path,))
-        #     self.conn.execute("INSERT INTO embeddings VALUES (?, ?, ?, ?, ?)", 
-        #                          (path, *data))
-        #     self.conn.commit()
-        ...
-
     # SEARCH FUNCTION
 
-    def search_lexical(self, query, negative_query, search_type, limit=20):
+    def search_lexical(self, query, negative_query, limit=20):
         with self.lock:
             final_match_query = query
             if negative_query:
@@ -276,12 +271,12 @@ class Database:
                     final_match_query = f"{query} NOT {clean_neg}"
 
             cur = self.conn.execute("""
-                SELECT path, content, type, bm25(search_index) as rank 
+                SELECT path, content, bm25(search_index) as rank 
                 FROM search_index 
-                WHERE search_index MATCH ? AND type = ?
+                WHERE search_index MATCH ?
                 ORDER BY rank 
                 LIMIT ?
-            """, (final_match_query, search_type, limit))
+            """, (final_match_query, limit))
             return cur.fetchall()
 
     # GUI SETTINGS
@@ -300,7 +295,7 @@ class Database:
         table_map = {
             'OCR': 'ocr_results',
             'EMBED': 'embeddings',
-            'EMBED_SUMMARY': 'embeddings',
+            'EMBED_LLM': 'embeddings',
             'LLM': 'llm_analysis'
         }
         
@@ -309,11 +304,18 @@ class Database:
 
         with self.lock:
             # 1. Nuke the data
-            self.conn.execute(f"DELETE FROM {target_table}")
+            if target_table == 'embeddings' and service_key == 'EMBED_LLM':
+                # Special case: EMBED_LLM only deletes negative index embeddings
+                self.conn.execute(f"DELETE FROM {target_table} WHERE chunk_index < 0")
+            elif target_table == 'embeddings' and service_key == 'EMBED':
+                # Special case: EMBED only deletes non-negative index embeddings
+                self.conn.execute(f"DELETE FROM {target_table} WHERE chunk_index >= 0")
+            else:
+                self.conn.execute(f"DELETE FROM {target_table}")
 
-            # 2. Delete EMBED_SUMMARY tasks if LLM is reset; other tasks stay the same because they are independent
+            # 2. Delete EMBED_LLM *tasks* if LLM is reset; other tasks stay the same because they are independent
             if service_key == 'LLM':
-                self.conn.execute("DELETE FROM tasks WHERE task_type='EMBED_SUMMARY'")
+                self.conn.execute("DELETE FROM tasks WHERE task_type='EMBED_LLM'")
 
             # 3. Reset the tasks so they run again
             self.conn.execute("UPDATE tasks SET status='PENDING' WHERE task_type=?", (service_key,))
