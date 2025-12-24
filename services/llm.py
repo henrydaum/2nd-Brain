@@ -43,8 +43,8 @@ class LLMService:
 
                 image_paths = [str(job.path)]
                 prompt = (
-                    "Write a list of 7 google search queries/questions that would be used to find this image. Use plain text only. Do not use numbering, bullet points, or markdown. Output ONLY the queries. No intro (e.g. 'Here is a list'). No outro. Write each query on a new line."
-                )  # 7 is a lucky number
+                    f"Write a list of 3 diverse google search queries/questions that would be used to find this image (filename: {path_obj.name}). Use plain text only. Do not use numbering, bullet points, or markdown. Output ONLY the queries. No intro (e.g. 'Here is a list'). No outro. Write each query on a new line.\n"
+                )
             
             # B. TEXT ANALYSIS
             elif is_text:
@@ -57,9 +57,9 @@ class LLMService:
                     return False
 
                 prompt = (
-                    "Write a list of 7 google search queries/questions that are answered by the text below. Use plain text only. Do not use numbering, bullet points, or markdown. Output ONLY the queries. No intro (e.g. 'Here is a list'). No outro. Write each query on a new line.\n\n"
-                    f"{text}"
-                )
+                    f"Write a list of 7 diverse google search queries/questions that are answered by the text below (filename: {path_obj.name}). Use plain text only. Do not use numbering, bullet points, or markdown. Output ONLY the queries. No intro (e.g. 'Here is a list'). No outro. Write each query on a new line.\n\n"
+                    f"{text}\n"
+                )  # 7 is a lucky number
 
             else:
                 logger.warning(f"✗ Skipping unsupported file: {path_obj.name}")

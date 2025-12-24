@@ -76,52 +76,65 @@ class RecursiveTokenSplitter:
     def split_text(self, text):
         return self._split_text(text, self.separators)
 
-# --- GIBBERISH CHECKER (From SecondBrainBackend.py) ---
+# --- GIBBERISH CHECKER ---
 
-# services/utils.py
-
-def is_gibberish(text, min_len=25, non_standard_threshold=0.05, low_compression_threshold=0.1, high_compression_threshold=0.9):
+def is_gibberish(text, min_len=25):
     """
-    Stricter gibberish filter. Returns true if the text is low quality.
+    Simple language-agnostic gibberish detector for document chunks.
+    Works across languages and scripts (English, Spanish, Chinese, Arabic, etc.)
+    
+    Returns True if text is low quality/gibberish.
     """
     if not text or len(text) < min_len:
         return True
     
-    # 1. Whitespace Check (Real text usually has spaces)
-    # If spaces make up less than 5% of the text, it's likely a URL, hash, or code dump.
-    if text.count(' ') / len(text) < 0.05:
+    # 1. Whitespace check - Real text has word boundaries
+    # Catches URLs, hashes, long identifiers (universal across languages)
+    space_ratio = text.count(' ') / len(text)
+    if space_ratio < 0.05:  # Less than 5% spaces
         return True
-
-    # 2. Non-standard character check
-    try:
-        normalized_text = unicodedata.normalize("NFKC", text)
-    except Exception:
-        normalized_text = text 
-        
-    allowed = set(string.printable)
-    total = len(normalized_text)
-    if total == 0: return True
     
-    non_standard = sum(ch not in allowed for ch in normalized_text)
-    if (non_standard / total) > non_standard_threshold:
+    # 2. Word repetition - Catches "aaaaa aaaaa" or "--- --- ---"
+    # Works for any language with space-separated words
+    words = text.split()
+    if len(words) >= 3:
+        word_counts = {}
+        for word in words:
+            word_counts[word] = word_counts.get(word, 0) + 1
+        
+        max_count = max(word_counts.values())
+        if max_count / len(words) > 0.4:  # Same word >40% of text
+            return True
+    
+    # 3. Character repetition - Catches "aaaaaaa" or "………"
+    # Universal check that works in any script
+    max_char_repeat = 1
+    current_repeat = 1
+    for i in range(1, len(text)):
+        if text[i] == text[i-1] and text[i] not in ' \n\t':
+            current_repeat += 1
+            max_char_repeat = max(max_char_repeat, current_repeat)
+        else:
+            current_repeat = 1
+    
+    if max_char_repeat > 5:  # Same character repeated >5 times
         return True
-        
-    # 3. Compression check
+    
+    # 4. Compression ratio - Works across all languages and scripts!
+    # Natural language has patterns; random gibberish doesn't compress well
+    # Repetitive junk compresses too well
     try:
-        text_bytes = normalized_text.encode('utf-8', 'ignore')
-        if not text_bytes: return True
-        compressed_len = len(zlib.compress(text_bytes, level=9))
-        compression_ratio = compressed_len / len(text_bytes)
+        compressed = zlib.compress(text.encode('utf-8', 'ignore'), level=9)
+        ratio = len(compressed) / len(text)
         
-        # Too repetitive (e.g. "..............")
-        if compression_ratio < low_compression_threshold:
+        if ratio < 0.1:  # Too repetitive
             return True
-        # Too random (e.g. Encrypted strings or high entropy garbage)
-        if len(text_bytes) > 100 and compression_ratio > high_compression_threshold:
+        
+        if len(text) > 100 and ratio > 0.9:  # Too random
             return True
-    except Exception:
+    except:
         pass
-        
+    
     return False
 
 # --- TEXT PROCESSING WRAPPER ---
