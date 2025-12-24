@@ -72,7 +72,7 @@ class SearchEngine:
                     # Convert bytes to numpy 
                     vec = np.frombuffer(embedding, dtype=np.float32)
                     
-                    # Critical Check
+                    # Critical Check; vector math can't be done on mismatched embedding sizes
                     if model_name == model_name_used:
                         paths.append(path)
                         contents_list.append(text_content)
@@ -80,7 +80,7 @@ class SearchEngine:
             if not valid_embeddings:
                 return []
 
-            # 4. Create the 2D Matrix (THE FIX)
+            # 4. Create the 2D Matrix
             # We use vstack to turn a [list of 1D arrays] into a [2D Matrix]
             # Shape becomes (Num_Docs, Embedding_Dim)
             emb_matrix = np.vstack(valid_embeddings)
@@ -91,7 +91,7 @@ class SearchEngine:
 
             # 6. Sort and Pack
             # Get indices of the top scores
-            # If we have fewer results than 'limit', take them all
+            # If fewer results than 'limit', take them all
             k = min(limit, len(scores))
             top_indices = np.argsort(scores)[-k:][::-1]
 

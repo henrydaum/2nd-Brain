@@ -37,19 +37,17 @@ class LLMService:
             
             # A. IMAGE ANALYSIS
             if is_image:
-                logger.info("LLM image analysis")
                 if not has_vision:
                     logger.warning(f"✗ Skipping image (No Vision support): {path_obj.name}")
                     return False
 
                 image_paths = [str(job.path)]
                 prompt = (
-                    "Write a list of 4-8 google search queries/questions that would be used to find this image. Use plain text only. Do not use numbering, bullet points, or markdown. Output ONLY the queries. No intro (e.g. 'Here is a list'). No outro. Write each query on a new line."
-                )
+                    "Write a list of 7 google search queries/questions that would be used to find this image. Use plain text only. Do not use numbering, bullet points, or markdown. Output ONLY the queries. No intro (e.g. 'Here is a list'). No outro. Write each query on a new line."
+                )  # 7 is a lucky number
             
             # B. TEXT ANALYSIS
             elif is_text:
-                logger.info("LLM text analysis")
                 drive_service = get_drive_service(self.config)
 
                 context_limit = 10000
@@ -59,8 +57,8 @@ class LLMService:
                     return False
 
                 prompt = (
-                    "Write a list of 4-8 google search queries/questions that are answered by the text below. Use plain text only. Do not use numbering, bullet points, or markdown. Output ONLY the queries. No intro (e.g. 'Here is a list'). No outro. Write each query on a new line.\n\n"
-                    f"{text}\n\n"
+                    "Write a list of 7 google search queries/questions that are answered by the text below. Use plain text only. Do not use numbering, bullet points, or markdown. Output ONLY the queries. No intro (e.g. 'Here is a list'). No outro. Write each query on a new line.\n\n"
+                    f"{text}"
                 )
 
             else:
