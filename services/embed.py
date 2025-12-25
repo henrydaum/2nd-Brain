@@ -165,15 +165,15 @@ class EmbedService:
             return False
         
         try:
-            llm_response = self.db.get_llm_result(job.path)
+            llm_response = [self.db.get_llm_result(job.path)]
 
             if not llm_response:
                 logger.warning(f"No LLM response to embed: {Path(job.path).name}")
                 return False
 
-            queries = [item.lstrip('\'\"0123456789.-• *').rstrip('\'\"') for item in llm_response.splitlines()]
+            # queries = [item.lstrip('\'\"0123456789.-• *').rstrip('\'\"') for item in llm_response.splitlines()]
             
-            embeddings_numpy = self.text_model.encode(queries, batch_size=self.config['batch_size'])
+            embeddings_numpy = self.text_model.encode(llm_response, batch_size=self.config['batch_size'])
             if embeddings_numpy is None or len(embeddings_numpy) == 0:
                 logger.warning(f"Failed to get llm embedding: {Path(job.path).name}")
                 return False

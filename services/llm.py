@@ -42,8 +42,10 @@ class LLMService:
                     return False
 
                 image_paths = [str(job.path)]
-                prompt = (
-                    f"Write a list of 3 diverse google search queries/questions that would be used to find this image (filename: {path_obj.name}). Use plain text only. Do not use numbering, bullet points, or markdown. Output ONLY the queries. No intro (e.g. 'Here is a list'). No outro. Write each query on a new line.\n"
+                prompt = (f"Analyze the following image for a search database. Start your analysis with 2-3 search queries/questions that would be used to find this image. After that, provide a brief summary of the image, making sure to note keywords and main topics. Use plain text with no markdown, and output ONLY the analysis. No intro (e.g. 'Here is an analysis'). No outro. Keep it under 150 words.\n\n"
+                f"Filename: {path_obj.name}"
+
+                    # f"Write a list of 3 diverse google search queries/questions that would be used to find this image (filename: {path_obj.name}). Use plain text only. Do not use numbering, bullet points, or markdown. Output ONLY the queries. No intro (e.g. 'Here is a list'). No outro. Write each query on a new line.\n"
                 )
             
             # B. TEXT ANALYSIS
@@ -56,9 +58,12 @@ class LLMService:
                     logger.warning("LLM run - no valid text extracted.")
                     return False
 
-                prompt = (
-                    f"Write a list of 7 diverse google search queries/questions that are answered by the text below (filename: {path_obj.name}). Use plain text only. Do not use numbering, bullet points, or markdown. Output ONLY the queries. No intro (e.g. 'Here is a list'). No outro. Write each query on a new line.\n\n"
-                    f"{text}\n"
+                prompt = (f"Analyze the following document for a search database. Start your analysis with 2-3 search queries/questions that would be used to find this document. After that, provide a brief summary of the doc, making sure to note keywords and main topics. Use plain text with no markdown, and output ONLY the analysis. No intro (e.g. 'Here is an analysis'). No outro. Keep it under 150 words.\n\n"
+                f"Filename: {path_obj.name}. Content:"
+                f"{text}"
+
+                    # f"Write a list of 7 diverse google search queries/questions that are answered by the text below (filename: {path_obj.name}). Use plain text only. Do not use numbering, bullet points, or markdown. Output ONLY the queries. No intro (e.g. 'Here is a list'). No outro. Write each query on a new line.\n\n"
+                    # f"{text}\n"
                 )  # 7 is a lucky number
 
             else:
@@ -73,7 +78,7 @@ class LLMService:
                 return False
 
             cleaned_response = response.strip()
-            logger.info(f"✓ LLM response made for {path_obj.name}: {cleaned_response[:600]}...")
+            logger.info(f"✓ LLM response made for {path_obj.name}: {cleaned_response}")
             
             self.db.save_llm_result(job.path, cleaned_response, model_name)
                 

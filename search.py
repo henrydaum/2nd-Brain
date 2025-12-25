@@ -1,6 +1,7 @@
 import logging
 import os
 import numpy as np
+import re
 from typing import List, Dict, Optional, Tuple
 
 logger = logging.getLogger("SearchEngine")
@@ -23,8 +24,14 @@ class SearchEngine:
             return []
 
         try:
+            # Clean query
+            cleaned = re.sub(r'[\W_]+', ' ', query.lower()).strip()
+            if not cleaned:
+                logger.info("get_lexical cleaned no query")
+                return []
+
             # - Using the updated unpack (path, content, rank)
-            rows = self.db.search_lexical(query, None, limit=limit)
+            rows = self.db.search_lexical(cleaned, None, limit=limit)
             
             results = []
             for path, content, source, rank in rows:
@@ -154,7 +161,7 @@ class SearchEngine:
             text_sem_raw = self.get_semantic(text_vec, limit=fetch_limit, model_name_used=self.models['text'].model_name) if self.models['text'].loaded else []
             image_sem_raw = self.get_semantic(image_vec, limit=fetch_limit, model_name_used=self.models['image'].model_name) if self.models['image'].loaded else []
 
-            logger.info(f"Fetched {len(lex_raw)} lexical, {len(text_sem_raw)} text semantic, {len(image_sem_raw)} image semantic.")
+            logger.info(f"Fetched {len(lex_raw)} lexical, {len(text_sem_raw)} {self.models['text'].model_name} semantic, {len(image_sem_raw)} {self.models['image'].model_name} semantic.")
             
             streams = [lex_raw, text_sem_raw, image_sem_raw]
 
@@ -163,8 +170,6 @@ class SearchEngine:
             def process_stream(raw_results):
                 processed_text = {}
                 processed_image = {}
-                # text_count = 0
-                # image_count = 0
                 
                 for res in raw_results:
                     path = res['path']
@@ -189,10 +194,8 @@ class SearchEngine:
                     target_dict = None
                     if is_text: 
                         target_dict = processed_text
-                        text_count += 1
                     elif is_image: 
                         target_dict = processed_image
-                        image_count += 1
                     
                     if target_dict is not None:
                         if path not in target_dict:
@@ -210,8 +213,6 @@ class SearchEngine:
                                 accumulated_hits = target_dict[path]['num_hits']
                                 target_dict[path] = res
                                 target_dict[path]['num_hits'] = accumulated_hits
-            
-                # logger.info(f"Found {text_count} text results and {image_count} image results.")
                 
                 return list(processed_text.values()), list(processed_image.values())
 
