@@ -95,7 +95,11 @@ class Database:
                 CREATE TRIGGER IF NOT EXISTS t_embed_insert AFTER INSERT ON embeddings
                 BEGIN
                     INSERT INTO search_index (path, content, source) 
-                    VALUES (new.path, new.path || ' ' || COALESCE(new.text_content, ''), 'embed');
+                    VALUES (
+                        new.path, 
+                        new.path || ' ' || COALESCE(new.text_content, ''), 
+                        CASE WHEN new.chunk_index < 0 THEN 'llm' ELSE 'embed' END
+                    );
                 END;
             """)
 
@@ -104,7 +108,9 @@ class Database:
             self.conn.execute("""
                 CREATE TRIGGER IF NOT EXISTS t_embed_delete AFTER DELETE ON embeddings
                 BEGIN
-                    DELETE FROM search_index WHERE path = old.path AND source = 'embed';
+                    DELETE FROM search_index 
+                    WHERE path = old.path 
+                    AND source = CASE WHEN old.chunk_index < 0 THEN 'llm' ELSE 'embed' END;
                 END;
             """)
 
@@ -271,7 +277,7 @@ class Database:
                     final_match_query = f"{query} NOT {clean_neg}"
 
             cur = self.conn.execute("""
-                SELECT path, content, bm25(search_index) as rank 
+                SELECT path, content, source, bm25(search_index) as rank 
                 FROM search_index 
                 WHERE search_index MATCH ?
                 ORDER BY rank 

@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTextEdit, QPushButton, QStackedWidget, QTableWidget, QTableWidgetItem,
     QListWidget, QListWidgetItem, QSystemTrayIcon, QMenu, QHeaderView,
-    QLabel, QFrame, QAbstractItemView, QTabWidget, QStatusBar, QLineEdit, QScrollArea, QDialog, QTextBrowser, QFileDialog
+    QLabel, QFrame, QAbstractItemView, QTabWidget, QStatusBar, QLineEdit, QScrollArea, QDialog, QTextBrowser, QFileDialog, QCheckBox
 )
 from PySide6.QtCore import Qt, QSize, Signal, Slot, QEvent, QUrl
 from PySide6.QtGui import QIcon, QPixmap, QFont, QColor, QBrush, QAction, QImage, QTextCursor, QDesktopServices
@@ -83,16 +83,18 @@ class FileLinkBrowser(QTextBrowser):
 
 class AdvancedSearchDialog(QDialog):
     """
-    A dialog for configuring search filters like specific folders and negative terms.
+    A dialog for configuring search filters like specific folders, negative terms, and source types.
     """
-    def __init__(self, current_folder, current_negative, parent=None):
+    def __init__(self, current_negative, current_folder, current_sources, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Search Filters")
-        self.setFixedSize(500, 250)
+        self.setFixedSize(500, 320)  # Increased height from 250 to 320
         
         # Store initial state
-        self.folder_path = current_folder
         self.negative_query = current_negative
+        self.folder_path = current_folder
+        # Default to all True if None provided
+        self.source_filter = current_sources
         
         # Styling
         self.setStyleSheet(f"""
@@ -113,6 +115,23 @@ class AdvancedSearchDialog(QDialog):
                 color: white;
             }}
             QPushButton:hover {{ background-color: {OUTLINE}; }}
+            QCheckBox {{
+                color: {TEXT_MAIN};
+                font-size: 13px;
+                spacing: 8px;
+            }}
+            QCheckBox::indicator {{
+                width: 18px;
+                height: 18px;
+                border: 1px solid {OUTLINE};
+                background-color: {BG_INPUT};
+                border-radius: 3px;
+            }}
+            QCheckBox::indicator:checked {{
+                background-color: {ACCENT_COLOR};
+                border: 1px solid {ACCENT_COLOR};
+                image: url(path/to/checkmark.png); /* Optional: Standard Check behavior usually sufficient */
+            }}
         """)
 
         layout = QVBoxLayout(self)
@@ -128,16 +147,35 @@ class AdvancedSearchDialog(QDialog):
         self.txt_folder.setPlaceholderText("All Folders (Default)")
         self.txt_folder.setStyleSheet("border: none;")
         
-        # SINGLE TOGGLE BUTTON
         self.btn_folder_action = QPushButton()
-        self.btn_folder_action.setFixedWidth(40) # Small square-ish button
+        self.btn_folder_action.setFixedWidth(40) 
         self.btn_folder_action.clicked.connect(self.handle_folder_toggle)
         
         folder_layout.addWidget(self.txt_folder)
         folder_layout.addWidget(self.btn_folder_action)
         layout.addLayout(folder_layout)
 
-        # --- SECTION 2: NEGATIVE FILTER ---
+        # --- SECTION 2: SOURCE FILTER (NEW) ---
+        layout.addWidget(QLabel("Source Filters:"))
+        source_layout = QHBoxLayout()
+        source_layout.setSpacing(20)
+
+        self.chk_ocr = QCheckBox("OCR")
+        self.chk_ocr.setChecked(self.source_filter.get("OCR", True))
+        
+        self.chk_embed = QCheckBox("EMBED")
+        self.chk_embed.setChecked(self.source_filter.get("EMBED", True))
+        
+        self.chk_llm = QCheckBox("LLM")
+        self.chk_llm.setChecked(self.source_filter.get("LLM", True))
+
+        source_layout.addWidget(self.chk_ocr)
+        source_layout.addWidget(self.chk_embed)
+        source_layout.addWidget(self.chk_llm)
+        source_layout.addStretch()
+        layout.addLayout(source_layout)
+
+        # --- SECTION 3: NEGATIVE FILTER ---
         layout.addWidget(QLabel("Exclude Terms - Negative Search:"))
         self.txt_negative = QLineEdit(self.negative_query if self.negative_query else "")
         self.txt_negative.setPlaceholderText("e.g. blurry, draft, screenshots")
@@ -160,40 +198,34 @@ class AdvancedSearchDialog(QDialog):
         btn_layout.addWidget(btn_apply)
         layout.addLayout(btn_layout)
 
-        # Initialize button state (Browse vs X)
         self.update_folder_button()
 
     def handle_folder_toggle(self):
-        """
-        If text is empty -> Open File Picker.
-        If text exists -> Clear it.
-        """
         if self.txt_folder.text():
-            # State: CLEAR
             self.txt_folder.clear()
         else:
-            # State: BROWSE
             folder = QFileDialog.getExistingDirectory(self, "Select Folder to Search In")
             if folder:
                 self.txt_folder.setText(os.path.normpath(folder))
-        
-        # Update icon after action
         self.update_folder_button()
 
     def update_folder_button(self):
-        """Updates the icon and tooltip based on whether a folder is selected."""
         if self.txt_folder.text():
-            # Show "X" to clear
             self.btn_folder_action.setIcon(qta.icon('mdi.close'))
             self.btn_folder_action.setToolTip("Clear Selection")
         else:
-            # Show "Folder" icon to browse
             self.btn_folder_action.setIcon(qta.icon('mdi.folder-open'))
             self.btn_folder_action.setToolTip("Browse...")
 
     def apply_filters(self):
         self.folder_path = self.txt_folder.text().strip() or None
         self.negative_query = self.txt_negative.text().strip() or None
+        # Capture checkbox states
+        self.source_filter = {
+            "OCR": self.chk_ocr.isChecked(),
+            "EMBED": self.chk_embed.isChecked(),
+            "LLM": self.chk_llm.isChecked()
+        }
         self.accept()
 
 class ResultDetailsDialog(QDialog):
@@ -223,10 +255,10 @@ class ResultDetailsDialog(QDialog):
         # 2. Metadata Row (Score | Type)
         meta_layout = QHBoxLayout()
         score = item_data.get('score', 0.0)
-        m_type = item_data.get('match_type', 'Unknown').upper()
+        m_type = item_data.get('result_type', 'Unknown').upper()
         num_hits = item_data.get('num_hits', 1)
         
-        lbl_meta = QLabel(f"<b>SCORE:</b> {score:.4f}   |   <b>TYPE:</b> {m_type}   |   HITS: {num_hits}")
+        lbl_meta = QLabel(f"<b>SCORE:</b> {score:.4f}   |   <b>TYPE:</b> {m_type}   |   <b>HITS:</b> {num_hits}")
         lbl_meta.setStyleSheet("color: #888;")
         meta_layout.addWidget(lbl_meta)
         meta_layout.addStretch()
@@ -332,11 +364,11 @@ class MainWindow(QMainWindow):
         self.orchestrator = orchestrator
         self.models = models
         self.config = config
-        self.drive_service = get_drive_service(self.config)  # Needed to open .gdoc attachments
         self.workers = []
-        self.search_filter = None  # None means "Search Everything"
-        self.negative_filter = ""  # Empty means "No Negative Filter"
         self.attached_file_path = None
+        self.folder_filter = None  # None means "Search Everything"
+        self.negative_filter = ""  # Empty means "No Negative Filter"
+        self.source_filter = {"OCR": True, "EMBED": True, "LLM": True}
         
         self.setWindowTitle("Second Brain")
         self.resize(900, 600)
@@ -795,7 +827,7 @@ class MainWindow(QMainWindow):
         self.log_output = QTextEdit()
         self.log_output.setReadOnly(True)
         self.log_output.document().setMaximumBlockCount(1000)  # Only show last 1000 messages
-        self.log_output.setFont(QFont("Monospace", 9))
+        self.log_output.setFont(QFont("Consolas", 9))
         self.log_output.setStyleSheet("QTextEdit { background-color: #111; color: #ccc; border: none; selection-color: white; }")  # selection-background-color: blue; 
         logs_layout.addWidget(self.log_output)
 
@@ -923,19 +955,6 @@ class MainWindow(QMainWindow):
         """Thread-safe slot to append text to the log display."""
         self.log_output.append(message)
 
-    def reauthorize_drive(self):
-        logger.info("Reauthorizing Google Drive...")
-        def reauth_worker():
-            token_path = Path("token.json")
-            if token_path.exists():
-                os.remove(token_path)
-            try:
-                self.drive_service = get_drive_service(self.config)
-            except Exception as e:
-                logger.error(f"[ERROR] Failed to get Drive service: {e}")
-                self.drive_service = None
-        threading.Thread(target=reauth_worker, daemon=True).start()
-
     def remove_attachment(self):
         """Clears the current attachment and resets the UI."""
         self.attached_file_path = None
@@ -993,28 +1012,44 @@ class MainWindow(QMainWindow):
     def handle_filter(self):
         """Opens the Advanced Search Dialog."""
         # Open dialog with current state
-        dialog = AdvancedSearchDialog(self.search_filter, self.negative_filter, self)
+        dialog = AdvancedSearchDialog(self.negative_filter, self.folder_filter, self.source_filter, self)  # Don't ask me why self is last
         if dialog.exec():
             # Retrieve new state
-            self.search_filter = dialog.folder_path
+            self.folder_filter = dialog.folder_path
             self.negative_filter = dialog.negative_query
+            self.source_filter = dialog.source_filter
             # Update Button Visuals
             self.update_filter_icon()
 
     def update_filter_icon(self):
         """Updates the filter button to show active/inactive state."""
-        has_filter = (self.search_filter is not None) or (self.negative_filter is not None)
+        # Check if any source is disabled (False)
+        sources_modified = not all(self.source_filter.values())
+        
+        # Filter is active if: Folder is set OR Negative text is set OR Sources are modified
+        has_filter = (self.folder_filter is not None) or \
+                     (self.negative_filter is not None) or \
+                     sources_modified
+
         if has_filter:
             # Make it a little green
             self.btn_filter.setIcon(qta.icon('mdi.filter-variant', color=ACCENT_COLOR))
+            
             # Build a helpful tooltip
             tips = []
-            if self.search_filter: tips.append(f"Folder: {Path(self.search_filter).name}")
-            if self.negative_filter: tips.append(f"Exclude: {self.negative_filter}")
+            if self.folder_filter: 
+                tips.append(f"Folder: {Path(self.folder_filter).name}")
+            if self.negative_filter: 
+                tips.append(f"Exclude: {self.negative_filter}")
+            if sources_modified:
+                # Show which ones are turned OFF
+                disabled = [k for k, v in self.source_filter.items() if not v]
+                tips.append(f"Disabled: {', '.join(disabled)}")
+                
             self.btn_filter.setToolTip(" | ".join(tips))
         else:
             # Default State
-            self.btn_filter.setIcon(self.filter_icon) # The original icon
+            self.btn_filter.setIcon(self.filter_icon) 
             self.btn_filter.setToolTip("Filter Search")
 
     def run_search(self):
@@ -1028,7 +1063,7 @@ class MainWindow(QMainWindow):
             self.llm_output.clear()
             return
         # Initialize data class to coordinate critical search information
-        searchfacts = SearchFacts(query=query, negative_query=self.negative_filter, attachment_path=self.attached_file_path)
+        searchfacts = SearchFacts(query=query, attachment_path=self.attached_file_path, negative_query=self.negative_filter, folder_filter=self.folder_filter, source_filter=self.source_filter)
         # 1. Stop previous worker if it's still running (prevents race conditions)
         if self.workers:
             for w in self.workers:
@@ -1040,7 +1075,7 @@ class MainWindow(QMainWindow):
         self.image_list.clear()
         self.llm_output.clear()
         # 3. Initialize Streaming Worker - does the actual search
-        worker = SearchWorker(self.search_engine, searchfacts, self.search_filter)
+        worker = SearchWorker(self.search_engine, searchfacts)
         # 4. Connect the split signals that return the results
         worker.text_ready.connect(self.on_text_ready)
         worker.image_stream.connect(self.on_image_stream)

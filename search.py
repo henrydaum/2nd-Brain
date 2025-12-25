@@ -27,12 +27,13 @@ class SearchEngine:
             rows = self.db.search_lexical(query, None, limit=limit)
             
             results = []
-            for path, content, rank in rows:
+            for path, content, source, rank in rows:
                 results.append({
                     "path": path,
                     "content": content,
                     "score": -1 * float(rank), # Invert rank so higher is better
-                    "match_type": "Lexical",
+                    "result_type": "Lexical",
+                    "source": source.upper(),
                     "embedding": None,
                     "num_hits": 1
                 })
@@ -54,7 +55,7 @@ class SearchEngine:
         try:
             # 2. Fetch Data (Optimized Select)
             # Only select what we need. 
-            sql = "SELECT path, text_content, embedding, model_name FROM embeddings"
+            sql = "SELECT path, chunk_index, text_content, embedding, model_name FROM embeddings"
             
             with self.db.lock:
                 cur = self.db.conn.execute(sql)
@@ -63,11 +64,12 @@ class SearchEngine:
             if not rows: return []
 
             paths = []
+            chunk_indices = []
             contents_list = []
             valid_embeddings = []
 
             # 3. Filter & Unpack
-            for path, text_content, embedding, model_name in rows:
+            for path, chunk_index, text_content, embedding, model_name in rows:
                 if embedding:
                     # Convert bytes to numpy 
                     vec = np.frombuffer(embedding, dtype=np.float32)
@@ -75,6 +77,7 @@ class SearchEngine:
                     # Critical Check; vector math can't be done on mismatched embedding sizes
                     if model_name == model_name_used:
                         paths.append(path)
+                        chunk_indices.append(chunk_index)
                         contents_list.append(text_content)
                         valid_embeddings.append(vec)
             if not valid_embeddings:
@@ -101,7 +104,8 @@ class SearchEngine:
                     "path": paths[idx],
                     "content": contents_list[idx],
                     "score": float(scores[idx]),
-                    "match_type": "Semantic",
+                    "result_type": "Semantic",
+                    "source": "EMBED" if chunk_indices[idx] >= 0 else "LLM",
                     "embedding": None, # Save RAM, don't pass this back unless needed
                     "num_hits": 1
                 })
@@ -113,7 +117,7 @@ class SearchEngine:
 
     # --- MAIN CONTROLLER ---
 
-    def hybrid_search(self, query_tuples, negative_query: str = "", top_k: int = 10, folder_path: str = None):
+    def hybrid_search(self, query_tuples, negative_query: str = "", top_k: int = 10, folder_path: str = None, valid_sources: dict = None):
         """
         The Brain. Handles embedding, filtering, deduplication, and fusion.
         """
@@ -159,6 +163,8 @@ class SearchEngine:
             def process_stream(raw_results):
                 processed_text = {}
                 processed_image = {}
+                # text_count = 0
+                # image_count = 0
                 
                 for res in raw_results:
                     path = res['path']
@@ -168,13 +174,25 @@ class SearchEngine:
                         if not os.path.normpath(path).startswith(os.path.normpath(folder_path)):
                             continue
 
+                    # Source Filter
+                    if valid_sources:
+                        source = res.get('source', '').upper()
+                        if source not in ["EMBED", "LLM", "OCR"]:
+                            logger.info(f"Unknown source '{source}' for path {path}, skipping source filter.")
+                        if not valid_sources[source]:
+                            continue
+
                     # Determine type
                     is_text = any(path.lower().endswith(ext.lower()) for ext in self.config['text_extensions'])
                     is_image = any(path.lower().endswith(ext.lower()) for ext in self.config['image_extensions'])
                     
                     target_dict = None
-                    if is_text: target_dict = processed_text
-                    elif is_image: target_dict = processed_image
+                    if is_text: 
+                        target_dict = processed_text
+                        text_count += 1
+                    elif is_image: 
+                        target_dict = processed_image
+                        image_count += 1
                     
                     if target_dict is not None:
                         if path not in target_dict:
@@ -192,6 +210,8 @@ class SearchEngine:
                                 accumulated_hits = target_dict[path]['num_hits']
                                 target_dict[path] = res
                                 target_dict[path]['num_hits'] = accumulated_hits
+            
+                # logger.info(f"Found {text_count} text results and {image_count} image results.")
                 
                 return list(processed_text.values()), list(processed_image.values())
 
@@ -223,8 +243,8 @@ class SearchEngine:
                     stored_doc = merged_docs[media_type][path]
                     
                     # A. Mark as Hybrid
-                    if stored_doc['match_type'] != item['match_type']:
-                        stored_doc['match_type'] = "Hybrid"
+                    if stored_doc['result_type'] != item['result_type']:
+                        stored_doc['result_type'] = "Hybrid"
                     
                     # B. MERGE HITS (This is what you were missing)
                     # We add the hits from this stream to the existing total
@@ -234,10 +254,10 @@ class SearchEngine:
                     if item['score'] > stored_doc['score']:
                          # Update display content to the better chunk, but keep the merged counts
                          current_hits = stored_doc['num_hits']
-                         current_match_type = stored_doc['match_type']
+                         current_result_type = stored_doc['result_type']
                          merged_docs[media_type][path] = item
                          merged_docs[media_type][path]['num_hits'] = current_hits
-                         merged_docs[media_type][path]['match_type'] = current_match_type
+                         merged_docs[media_type][path]['result_type'] = current_result_type
 
                 # RRF Math
                 if path not in merged_scores[media_type]: merged_scores[media_type][path] = 0.0

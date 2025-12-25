@@ -51,12 +51,15 @@ class SearchFacts:
     """Holds all data for a single user request and its results."""
     from typing import List, Optional, Any, Dict
     query: str = ""
-    negative_query: str = ""
     attachment_path: Optional[Path] = None
     text_attachment: str = None
     image_attachment: str = None
     image_search_results: List[Dict[str, Any]] = field(default_factory=list)
     text_search_results: List[Dict[str, Any]] = field(default_factory=list)
+
+    negative_query: str = ""
+    folder_filter: str = ""
+    source_filter: dict = field(default_factory=dict)
 
 # --- WORKER THREADS ---
 
@@ -65,12 +68,10 @@ class SearchWorker(QThread):
     text_ready = Signal(list)
     image_stream = Signal(dict, QImage)
 
-    def __init__(self, search_engine, searchfacts, filter_folder):
+    def __init__(self, search_engine, searchfacts):
         super().__init__()
         self.search_engine = search_engine
         self.searchfacts = searchfacts
-        self.filter_folder = filter_folder
-
         self._is_running = True
 
     def run(self):
@@ -95,7 +96,7 @@ class SearchWorker(QThread):
         if self.searchfacts.image_attachment:
             query_tuples.append(("image", self.searchfacts.image_attachment))
 
-        final_results = self.search_engine.hybrid_search(query_tuples, self.searchfacts.negative_query, top_k=30, folder_path=self.filter_folder)
+        final_results = self.search_engine.hybrid_search(query_tuples, self.searchfacts.negative_query, top_k=30, folder_path=self.searchfacts.folder_filter, valid_sources=self.searchfacts.source_filter)
 
         text_results = final_results['text']
         image_results = final_results['image']

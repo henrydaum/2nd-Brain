@@ -144,7 +144,7 @@ class SentenceTransformerEmbedder(BaseEmbedder):
                     local_files_only=True 
                 )
             except Exception as e:
-                logger.error(f"[AI Error] Load failed: {e}")
+                logger.error(f"Load failed: {e}")
                 return False
         
         # Set Context Length
