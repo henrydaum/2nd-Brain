@@ -51,10 +51,20 @@ class LLMService:
                 drive_service = get_drive_service(self.config)
 
                 context_limit = 20000
-                text = get_text_content(Path(job.path), drive_service, self.config)[:context_limit]
-                if not text:
+                full_text = get_text_content(Path(job.path), drive_service, self.config)[:context_limit]
+                if not full_text:
                     logger.warning("LLM run - no valid text extracted.")
                     return False
+                    
+                # Get head + tail if too long
+                if len(full_text) > context_limit:
+                    # Take first 15k chars (Intro/Body)
+                    head = full_text[:15000]
+                    # Take last 5k chars (Conclusion/Results)
+                    tail = full_text[-5000:]
+                    text = f"{head}\n\n... [Content Truncated] ...\n\n{tail}"
+                else:
+                    text = full_text
 
                 prompt = (f"Analyze this document for a search engine index by generating a direct, factual description of the context, followed immediately by a comprehensive list of relevant search keywords, synonyms, and entities. Keep the description dry and robotic, avoiding flowery language or meta-phrases like 'this image depicts,' and instead focus strictly on visible objects, actions, and specific data. Output only the plain text result consisting of the factual description followed by the comma-separated keyword list.\n\n"
                 f"Filename: {path_obj.name}. Content:"

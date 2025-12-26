@@ -58,21 +58,24 @@ class EmbedService:
         drive_service = get_drive_service(self.config)
 
         for job in jobs:
-            # Get the parsed and chunked content
-            # Returns: list of (index, chunk_text) tuples
-            chunked_data = process_text_file(
-                pathlib.Path(job.path), 
-                drive_service, 
-                self.config,
-                self.text_splitter
-            )
-            
-            if not chunked_data: continue
+            try:
+                # Get the parsed and chunked content
+                # Returns: list of (index, chunk_text) tuples
+                chunked_data = process_text_file(
+                    pathlib.Path(job.path), 
+                    drive_service, 
+                    self.config,
+                    self.text_splitter
+                )
+                
+                if not chunked_data: continue
 
-            # Map chunks to the batch lists
-            for index, chunk_text in chunked_data:
-                all_chunks_data.append((index, chunk_text, job.path))
-                text_inputs.append(chunk_text)
+                # Map chunks to the batch lists
+                for index, chunk_text in chunked_data:
+                    all_chunks_data.append((index, chunk_text, job.path))
+                    text_inputs.append(chunk_text)
+            except Exception as e:
+                logger.error(f"Failed to get text chunks for {job.path}: {e}")
 
         if not text_inputs: 
             return []

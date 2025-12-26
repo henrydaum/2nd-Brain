@@ -4,6 +4,9 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
 import time
+import logging
+
+logger = logging.getLogger("Database")
 
 @dataclass
 class FileRecord:
@@ -19,6 +22,8 @@ class Database:
         self.lock = threading.Lock() # Application-level lock for safety
         
         self._setup_tables()
+        # Start integrity validation in a separate thread
+        threading.Thread(target=self.validate_integrity, daemon=True).start()
 
     def _setup_tables(self):
         with self.lock:
@@ -295,6 +300,7 @@ class Database:
         with self.lock:
             self.conn.execute("UPDATE tasks SET status='PENDING' WHERE status != 'DONE'")
             self.conn.commit()
+        logger.info("Reset all FAILED tasks to PENDING.")
 
     def reset_service_data(self, service_key):
         """
@@ -317,3 +323,77 @@ class Database:
             # 3. Reset the tasks so they run again
             self.conn.execute("UPDATE tasks SET status='PENDING' WHERE task_type=?", (service_key,))
             self.conn.commit()
+            logger.info(f"Reset all data and tasks for service: {service_key}")
+    
+    # Database healing and maintenance
+    def validate_integrity(self):
+        """
+        Runs physical and logical consistency checks. 
+        Auto-heals 'Orphans' (data with no task) and 'Zombies' (DONE tasks with no data).
+        """
+        with self.lock:
+            logger.info("Performing database integrity check...")
+
+            # 1. PHYSICAL CHECK (Corruption)
+            try:
+                # This checks for disk-level corruption (broken pages, bad indices)
+                cursor = self.conn.execute("PRAGMA integrity_check;")
+                result = cursor.fetchone()[0]
+                if result != "ok":
+                    logger.error(f"CRITICAL: Database corruption detected: {result}")
+                    # In a production app, you might backup and recreate the DB here.
+            except Exception as e:
+                logger.error(f"Integrity check failed: {e}")
+
+            # 2. LOGICAL CHECK (Orphans - Delete data that has no Task)
+            # OCR Orphans
+            self.conn.execute("""
+                DELETE FROM ocr_results 
+                WHERE path NOT IN (SELECT path FROM tasks WHERE task_type='OCR')
+            """)
+            
+            # Embedding Orphans (Text)
+            self.conn.execute("""
+                DELETE FROM embeddings 
+                WHERE chunk_index >= 0 
+                AND path NOT IN (SELECT path FROM tasks WHERE task_type='EMBED')
+            """)
+
+            # LLM Orphans (Analysis)
+            self.conn.execute("""
+                DELETE FROM llm_analysis 
+                WHERE path NOT IN (SELECT path FROM tasks WHERE task_type='LLM')
+            """)
+            
+            # Embedding Orphans (Summary/LLM)
+            self.conn.execute("""
+                DELETE FROM embeddings 
+                WHERE chunk_index < 0 
+                AND path NOT IN (SELECT path FROM tasks WHERE task_type='EMBED_LLM')
+            """)
+
+            # 3. LOGICAL CHECK (Zombies - Reset tasks that claim to be DONE but have no data)
+            
+            # OCR Zombies
+            self.conn.execute("""
+                UPDATE tasks SET status='PENDING' 
+                WHERE task_type='OCR' AND status='DONE' 
+                AND path NOT IN (SELECT path FROM ocr_results)
+            """)
+
+            # Embed Zombies
+            self.conn.execute("""
+                UPDATE tasks SET status='PENDING' 
+                WHERE task_type='EMBED' AND status='DONE' 
+                AND path NOT IN (SELECT path FROM embeddings WHERE chunk_index >= 0)
+            """)
+            
+            # LLM Zombies
+            self.conn.execute("""
+                UPDATE tasks SET status='PENDING' 
+                WHERE task_type='LLM' AND status='DONE' 
+                AND path NOT IN (SELECT path FROM llm_analysis)
+            """)
+
+            self.conn.commit()
+            logger.info("Database integrity validation complete.")
