@@ -25,7 +25,7 @@ class Database:
             # WAL mode
             self.conn.execute("PRAGMA journal_mode=WAL;")
             
-            # CHANGE: Primary Key is now (path, task_type)
+            # Primary Key is (path, task_type)
             self.conn.execute("""
                 CREATE TABLE IF NOT EXISTS tasks (
                     path TEXT,
@@ -53,8 +53,7 @@ class Database:
                     path TEXT PRIMARY KEY,
                     text_content TEXT,
                     engine_name TEXT,
-                    updated_at REAL,
-                    FOREIGN KEY(path) REFERENCES tasks(path) ON DELETE CASCADE
+                    updated_at REAL
                 )
             """)
 
@@ -66,8 +65,7 @@ class Database:
                     text_content TEXT,
                     embedding BLOB,
                     model_name TEXT,
-                    PRIMARY KEY(path, chunk_index),
-                    FOREIGN KEY(path) REFERENCES tasks(path) ON DELETE CASCADE
+                    PRIMARY KEY(path, chunk_index)
                 )
             """)
 
@@ -77,8 +75,7 @@ class Database:
                     path TEXT PRIMARY KEY,
                     response TEXT,
                     model_name TEXT,
-                    updated_at REAL,
-                    FOREIGN KEY(path) REFERENCES tasks(path) ON DELETE CASCADE
+                    updated_at REAL
                 )
             """)
 
@@ -131,15 +128,9 @@ class Database:
                     DELETE FROM search_index WHERE path = old.path AND source = 'ocr';
                 END;
             """)
-
-            # Trigger 5: MASTER CLEANUP (When file is deleted entirely)
-            self.conn.execute("""
-                CREATE TRIGGER IF NOT EXISTS t_task_delete AFTER DELETE ON tasks
-                BEGIN
-                    DELETE FROM search_index WHERE path = old.path;
-                END;
-            """)
             self.conn.commit()
+
+    # STATE MANAGEMENT
 
     def add_or_update_task(self, path: str, task_type: str, status: str = "PENDING", mtime: float = 0.0):
         with self.lock:
@@ -153,12 +144,18 @@ class Database:
                     updated_at=excluded.updated_at
             """, (path, task_type, status, mtime, time.time()))
             self.conn.commit()
-
-    # MISC UTILITY FUNCTIONS
     
     def remove_task(self, path: str):
         # Removes ALL tasks for this file (cleanup)
         with self.lock:
+            self.conn.execute("DELETE FROM ocr_results WHERE path=?", (path,))
+            self.conn.execute("DELETE FROM embeddings WHERE path=?", (path,))
+            self.conn.execute("DELETE FROM llm_analysis WHERE path=?", (path,))
+            
+            # 2. Clear Search Index (The triggers might handle this, but better safe than sorry)
+            self.conn.execute("DELETE FROM search_index WHERE path=?", (path,))
+            
+            # 3. Clear the Task itself
             self.conn.execute("DELETE FROM tasks WHERE path=?", (path,))
             self.conn.commit()
 
@@ -172,6 +169,8 @@ class Database:
                 WHERE path=? AND task_type=?
             """, (result, time.time(), path, task_type))
             self.conn.commit()
+
+    # DATA RETRIEVAL FUNCTIONS
 
     def get_pending_tasks(self):
         """Used on startup to resume unfinished work."""
@@ -242,7 +241,7 @@ class Database:
             
             return stats, total_files
 
-    # SPECIFIC SERVICES
+    # SAVE FUNCTIONS FOR SERVICES
     
     def save_ocr_result(self, path, text):
         with self.lock:
@@ -298,29 +297,14 @@ class Database:
         Destructive: Deletes all data for a specific service and resets its tasks to PENDING.
         service_key: 'OCR', 'EMBED', or 'LLM'
         """
-        table_map = {
-            'OCR': 'ocr_results',
-            'EMBED': 'embeddings',
-            'EMBED_LLM': 'embeddings',
-            'LLM': 'llm_analysis'
-        }
-        
-        target_table = table_map.get(service_key)
-        if not target_table: return
-
         with self.lock:
-            # 1. Nuke the data
-            if target_table == 'embeddings' and service_key == 'EMBED_LLM':
-                # Special case: EMBED_LLM only deletes negative index embeddings
-                self.conn.execute(f"DELETE FROM {target_table} WHERE chunk_index < 0")
-            elif target_table == 'embeddings' and service_key == 'EMBED':
-                # Special case: EMBED only deletes non-negative index embeddings
-                self.conn.execute(f"DELETE FROM {target_table} WHERE chunk_index >= 0")
-            else:
-                self.conn.execute(f"DELETE FROM {target_table}")
-
-            # 2. Delete EMBED_LLM *tasks* if LLM is reset; other tasks stay the same because they are independent
-            if service_key == 'LLM':
+            if service_key == 'OCR':
+                self.conn.execute("DELETE FROM ocr_results")
+            elif service_key == 'EMBED':
+                self.conn.execute("DELETE FROM embeddings WHERE chunk_index >= 0")
+            elif service_key == 'LLM':
+                self.conn.execute("DELETE FROM llm_analysis")
+                self.conn.execute("DELETE FROM embeddings WHERE chunk_index < 0")
                 self.conn.execute("DELETE FROM tasks WHERE task_type='EMBED_LLM'")
 
             # 3. Reset the tasks so they run again

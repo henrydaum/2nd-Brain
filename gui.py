@@ -769,7 +769,7 @@ class MainWindow(QMainWindow):
         self.btn_screenshotter_toggle = self.add_live_setting_row("Screen Capture", f"Start/Stop taking screenshots every {self.config.get('screenshot_interval', 'N')} seconds, deleted after {self.config.get('delete_screenshots_after', 'N')} days", 
                                   lambda: self.toggle_model('screenshotter'), color=OUTLINE)
 
-        self.add_live_setting_row("Data Folder", "Manage all created user data", 
+        self.add_live_setting_row("Open Data Folder", "Manage all user data", 
                                   lambda: os.startfile(DATA_DIR), color=OUTLINE)
         # B. External Auth
         self.add_live_setting_row("Google Drive", "Reauthorize connection", 
@@ -780,7 +780,7 @@ class MainWindow(QMainWindow):
         self.add_live_setting_row("Reset OCR Data", "Delete all OCR text & re-queue images", 
                                   lambda: self.run_db_action('reset_service', ['OCR']), color="#e06c75")
         self.add_live_setting_row("Reset Embeddings", "Delete all vectors & re-queue all files", 
-                                  lambda: self.run_db_action('reset_service', ['EMBED', 'EMBED_LLM']), color="#e06c75")
+                                  lambda: self.run_db_action('reset_service', ['EMBED']), color="#e06c75")
         self.add_live_setting_row("Reset LLM Data", "Delete AI analysis & re-queue all files", 
                                   lambda: self.run_db_action('reset_service', ['LLM']), color="#e06c75")
         self.settings_layout.addSpacing(30)  # Space between sections
@@ -847,6 +847,19 @@ class MainWindow(QMainWindow):
         else:
             final_height = new_height
         self.search_input.setFixedHeight(final_height)
+
+    def reauthorize_drive(self):
+        logger.info("Reauthorizing Google Drive...")
+        def reauth_worker():
+            token_path = Path("token.json")
+            if token_path.exists():
+                os.remove(token_path)
+            try:
+                self.drive_service = get_drive_service(self.config)
+            except Exception as e:
+                logger.error(f"[ERROR] Failed to get Drive service: {e}")
+                self.drive_service = None
+        threading.Thread(target=reauth_worker, daemon=True).start()
 
     def eventFilter(self, obj, event):
         """Automatically found and installed by 'QApplication.instance().installEventFilter(self)'"""

@@ -68,7 +68,7 @@ class LLMService:
             # --- INVOKE AND SAVE ---
             # Invoke LLM
             response = self.model.invoke(prompt, image_paths=image_paths, temperature=0.3)
-            if "LM Studio Invoke Error" in response:
+            if ("LM Studio Invoke Error" in response) or ("OpenAI Invoke Error" in response):
                 logger.error(f"LLM invocation error for {path_obj.name}")
                 return False
 
