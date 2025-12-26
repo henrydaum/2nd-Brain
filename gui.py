@@ -851,7 +851,7 @@ class MainWindow(QMainWindow):
     def reauthorize_drive(self):
         logger.info("Reauthorizing Google Drive...")
         def reauth_worker():
-            token_path = Path("token.json")
+            token_path = DATA_DIR / "token.json"
             if token_path.exists():
                 os.remove(token_path)
             try:
@@ -1374,7 +1374,7 @@ class MainWindow(QMainWindow):
             self.config[key] = val
         # Write to file.
         try:
-            with open("config.json", "w") as f:
+            with open(DATA_DIR / "config.json", "w") as f:
                 json.dump(self.config, f, indent=4)
             self.status_bar.showMessage("Configuration saved.", 5000)
         except Exception as e:
