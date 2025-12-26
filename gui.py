@@ -1212,15 +1212,14 @@ class MainWindow(QMainWindow):
         worker.start()
 
     @Slot(str, bool)
-    def on_model_toggle_done(self, key, success):
+    def on_model_toggle_done(self, key, action, success):
         """Updates the UI after model load/unload is complete. Also resumes pending tasks if loading succeeded."""
         # Refresh the tray menu text to reflect the new state
         self.update_tray_menu()
         self.update_button_states()
         # Resume pending tasks
-        if success:
-            # CHANGE: Map keys to LISTS of task types
-            # 'embed' now wakes up both standard embedding tasks AND summary embedding tasks
+        if success and action == "load":
+            # 'embed' wakes up both standard embedding tasks AND summary embedding tasks
             key_map = {
                 'ocr': ['OCR'], 
                 'embed': ['EMBED', 'EMBED_LLM'], 

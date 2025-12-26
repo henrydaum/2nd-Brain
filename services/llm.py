@@ -42,7 +42,7 @@ class LLMService:
                     return False
 
                 image_paths = [str(job.path)]
-                prompt = (f"Create a comprehensive, retrieval-optimized summary of this image that captures all key information including main topics, entities (names, dates, places, organizations), and factual details. Use diverse terminology with synonyms and varied phrasings that one might search for, incorporating both technical terms and plain language. Anticipate questions someone might ask and explicitly address those concepts. Use plain text with no markdown, and output ONLY the summary. No intro (e.g. 'Here is a summary'). No outro. Aim for one short paragraph under 100 words.\n\n"
+                prompt = (f"Create a comprehensive, retrieval-optimized summary of this image that captures all key information including main topics, entities (names, dates, places, organizations), and factual details. Use diverse terminology with synonyms and varied phrasings that one might search for, incorporating both technical terms and plain language. Consider the utility and usefulness of the image and what questions the image might help answer. Use plain text with no markdown, and output ONLY the summary. No intro (e.g. 'Here is a summary'). No outro. Aim for one short paragraph under 100 words.\n\n"
                 f"Filename: {path_obj.name}"
                 )
             
@@ -56,7 +56,7 @@ class LLMService:
                     logger.warning("LLM run - no valid text extracted.")
                     return False
 
-                prompt = (f"Create a comprehensive, retrieval-optimized summary of this document that captures all key information including main topics, entities (names, dates, places, organizations), and factual details. Use diverse terminology with synonyms and varied phrasings that one might search for, incorporating both technical terms and plain language. Anticipate questions someone might ask and explicitly address those concepts. Use plain text with no markdown, and output ONLY the summary. No intro (e.g. 'Here is a summary'). No outro. Aim for one short paragraph under 100 words.\n\n"
+                prompt = (f"Create a comprehensive, retrieval-optimized summary of this document that captures all key information including main topics, entities (names, dates, places, organizations), and factual details. Use diverse terminology with synonyms and varied phrasings that one might search for, incorporating both technical terms and plain language. Consider the utility and usefulness of the document and what questions the document might help answer. Use plain text with no markdown, and output ONLY the summary. No intro (e.g. 'Here is a summary'). No outro. Aim for one short paragraph under 100 words.\n\n"
                 f"Filename: {path_obj.name}. Content:"
                 f"{text}" 
                 )

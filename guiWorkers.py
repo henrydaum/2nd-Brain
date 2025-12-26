@@ -204,7 +204,7 @@ class StatsWorker(QThread):
         self.wait()
 
 class ModelToggleWorker(QThread):
-    finished = Signal(str, bool)
+    finished = Signal(str, str, bool)
 
     def __init__(self, models, key, action):
         super().__init__()
@@ -226,9 +226,9 @@ class ModelToggleWorker(QThread):
                     if not model.load(): success = False
                 else:
                     model.unload()
-            self.finished.emit(self.key, success)
+            self.finished.emit(self.key, self.action, success)
         except Exception:
-            self.finished.emit(self.key, False)
+            self.finished.emit(self.key, self.action, False)
 
 class DatabaseActionWorker(QThread):
     """The GUI uses this to talk to the database to retry failed tasks or reset a service's data - settings options."""
