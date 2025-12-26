@@ -165,27 +165,23 @@ class EmbedService:
             return False
         
         try:
-            llm_response = [self.db.get_llm_result(job.path)]
+            llm_response = self.db.get_llm_result(job.path)
 
             if not llm_response:
                 logger.warning(f"No LLM response to embed: {Path(job.path).name}")
                 return False
-
-            # queries = [item.lstrip('\'\"0123456789.-• *').rstrip('\'\"') for item in llm_response.splitlines()]
             
-            embeddings_numpy = self.text_model.encode(llm_response, batch_size=self.config['batch_size'])
+            embeddings_numpy = self.text_model.encode([llm_response], batch_size=self.config['batch_size'])
+            
             if embeddings_numpy is None or len(embeddings_numpy) == 0:
                 logger.warning(f"Failed to get llm embedding: {Path(job.path).name}")
                 return False
             
-            data_batch = []
-            for i, query_text in enumerate(queries):
-                vector_bytes = embeddings_numpy[i].tobytes()
-                data = (-(i+1), query_text, vector_bytes, self.text_model.model_name)  # Use negative indices < 0
-                data_batch.append(data)
-            self.db.save_embeddings(job.path, data_batch)
+            vector_bytes = embeddings_numpy[0].tobytes()
+            data = (-1, llm_response, vector_bytes, self.text_model.model_name)  # Use negative indices < 0
+            self.db.save_embeddings(job.path, [data])
 
-            logger.info(f"Successfully saved {len(data_batch)} LLM Embeddings for: {Path(job.path).name}")
+            logger.info(f"Successfully saved LLM Embedding for: {Path(job.path).name}")
             return True
         except Exception as e:
             logger.error(f"Failed to embed LLM response: {Path(job.path).name}: {e}")

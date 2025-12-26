@@ -124,7 +124,7 @@ class SearchEngine:
 
     # --- MAIN CONTROLLER ---
 
-    def hybrid_search(self, query_tuples, negative_query: str = "", top_k: int = 10, folder_path: str = None, valid_sources: dict = None):
+    def hybrid_search(self, query_tuples, top_k: int = 10, folder_filter: str = None, source_filter: dict = None):
         """
         The Brain. Handles embedding, filtering, deduplication, and fusion.
         """
@@ -138,8 +138,8 @@ class SearchEngine:
             
             # 1. PREPARE RESOURCES
             if query_type == "text":
-                text_vec = self._embed_query(query, negative_query, self.models['text']) if self.models['text'].loaded else []
-                image_vec = self._embed_query(query, negative_query, self.models['image']) if self.models['image'].loaded else []
+                text_vec = self._embed_query(query, self.models['text']) if self.models['text'].loaded else []
+                image_vec = self._embed_query(query, self.models['image']) if self.models['image'].loaded else []
             elif query_type == "image":
                 text_vec = []
                 image_vec = []
@@ -175,16 +175,16 @@ class SearchEngine:
                     path = res['path']
                     
                     # Folder Filter
-                    if folder_path and folder_path != "All":
-                        if not os.path.normpath(path).startswith(os.path.normpath(folder_path)):
+                    if folder_filter and folder_filter != "All":
+                        if not os.path.normpath(path).startswith(os.path.normpath(folder_filter)):
                             continue
 
                     # Source Filter
-                    if valid_sources:
+                    if source_filter:
                         source = res.get('source', '').upper()
                         if source not in ["EMBED", "LLM", "OCR"]:
                             logger.info(f"Unknown source '{source}' for path {path}, skipping source filter.")
-                        if not valid_sources[source]:
+                        if not source_filter[source]:
                             continue
 
                     # Determine type
@@ -285,26 +285,14 @@ class SearchEngine:
         logger.info("Search concluded.")
         return final_results
 
-    def _embed_query(self, query, negative_query, model):
+    def _embed_query(self, query, model):
         """Helper to create the query vector."""
         try:
             # BGE models need specific instructions
-            needs_prefix = self.config.get('text_model_name', "") in ["BAAI/bge-small-en-v1.5", "BAAI/bge-large-en-v1.5"]
+            needs_prefix = model.model_name in ["BAAI/bge-small-en-v1.5", "BAAI/bge-large-en-v1.5"]
             prefix = "Represent this sentence for searching relevant passages: " if needs_prefix else ""
 
-            pos_vec = model.encode([prefix + query])[0] if query else None
-            neg_vec = model.encode([prefix + negative_query])[0] if negative_query else None
-
-            final_vec = pos_vec
-            if pos_vec is not None and neg_vec is not None:
-                final_vec = pos_vec - neg_vec
-            elif neg_vec is not None:
-                final_vec = -neg_vec 
-            
-            if final_vec is None: return None
-
-            norm = np.linalg.norm(final_vec)
-            return final_vec / norm if norm > 0 else final_vec
+            return model.encode([prefix + query])[0] 
         except Exception as e:
             logger.error(f"embed_query error: {e}")
             return None

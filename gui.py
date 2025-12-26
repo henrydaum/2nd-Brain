@@ -83,15 +83,14 @@ class FileLinkBrowser(QTextBrowser):
 
 class AdvancedSearchDialog(QDialog):
     """
-    A dialog for configuring search filters like specific folders, negative terms, and source types.
+    A dialog for configuring search filters like specific folders and source types.
     """
-    def __init__(self, current_negative, current_folder, current_sources, parent=None):
+    def __init__(self, current_folder, current_sources, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Search Filters")
-        self.setFixedSize(500, 320)  # Increased height from 250 to 320
+        self.setFixedSize(500, 200)
         
         # Store initial state
-        self.negative_query = current_negative
         self.folder_path = current_folder
         # Default to all True if None provided
         self.source_filter = current_sources
@@ -99,7 +98,7 @@ class AdvancedSearchDialog(QDialog):
         # Styling
         self.setStyleSheet(f"""
             QDialog {{ background-color: {BG_DARK}; color: {TEXT_MAIN}; }}
-            QLabel {{ font-size: 14px; font-weight: bold; color: {ACCENT_COLOR}; }}
+            QLabel {{ font-size: 14px; font-weight: bold; color: {TEXT_MAIN}; }}
             QLineEdit {{ 
                 background-color: {BG_INPUT}; 
                 border: 1px solid {OUTLINE}; 
@@ -139,7 +138,7 @@ class AdvancedSearchDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
 
         # --- SECTION 1: FOLDER FILTER ---
-        layout.addWidget(QLabel("Search In Specific Folder:"))
+        layout.addWidget(QLabel("Search in a specific folder:"))
         
         folder_layout = QHBoxLayout()
         self.txt_folder = QLineEdit(self.folder_path if self.folder_path else "")
@@ -155,8 +154,10 @@ class AdvancedSearchDialog(QDialog):
         folder_layout.addWidget(self.btn_folder_action)
         layout.addLayout(folder_layout)
 
-        # --- SECTION 2: SOURCE FILTER (NEW) ---
-        layout.addWidget(QLabel("Source Filters:"))
+        layout.addStretch()
+
+        # --- SECTION 2: SOURCE FILTER ---
+        layout.addWidget(QLabel("Search based on specific sources:"))
         source_layout = QHBoxLayout()
         source_layout.setSpacing(20)
 
@@ -168,24 +169,6 @@ class AdvancedSearchDialog(QDialog):
         
         self.chk_llm = QCheckBox("LLM")
         self.chk_llm.setChecked(self.source_filter.get("LLM", True))
-
-        source_layout.addWidget(self.chk_ocr)
-        source_layout.addWidget(self.chk_embed)
-        source_layout.addWidget(self.chk_llm)
-        source_layout.addStretch()
-        layout.addLayout(source_layout)
-
-        # --- SECTION 3: NEGATIVE FILTER ---
-        layout.addWidget(QLabel("Exclude Terms - Negative Search:"))
-        self.txt_negative = QLineEdit(self.negative_query if self.negative_query else "")
-        self.txt_negative.setPlaceholderText("e.g. blurry, draft, screenshots")
-        self.txt_negative.setStyleSheet("border: none;")
-        layout.addWidget(self.txt_negative)
-
-        layout.addStretch()
-
-        # --- ACTION BUTTONS ---
-        btn_layout = QHBoxLayout()
         
         btn_apply = QPushButton("Done")
         btn_apply.setStyleSheet(f"""
@@ -193,10 +176,20 @@ class AdvancedSearchDialog(QDialog):
             QPushButton:hover {{ background-color: {ACCENT_COLOR}; color: {BG_DARK}; }}
         """)
         btn_apply.clicked.connect(self.apply_filters)
+
+        source_layout.addWidget(self.chk_ocr)
+        source_layout.addWidget(self.chk_embed)
+        source_layout.addWidget(self.chk_llm)
+        source_layout.addStretch()
+        source_layout.addWidget(btn_apply)
+        layout.addLayout(source_layout)
+
+        # --- ACTION BUTTONS ---
+        # btn_layout = QHBoxLayout()
         
-        btn_layout.addStretch()
-        btn_layout.addWidget(btn_apply)
-        layout.addLayout(btn_layout)
+        # btn_layout.addStretch()
+        # btn_layout.addWidget(btn_apply)
+        # layout.addLayout(btn_layout)
 
         self.update_folder_button()
 
@@ -219,7 +212,6 @@ class AdvancedSearchDialog(QDialog):
 
     def apply_filters(self):
         self.folder_path = self.txt_folder.text().strip() or None
-        self.negative_query = self.txt_negative.text().strip() or None
         # Capture checkbox states
         self.source_filter = {
             "OCR": self.chk_ocr.isChecked(),
@@ -367,7 +359,6 @@ class MainWindow(QMainWindow):
         self.workers = []
         self.attached_file_path = None
         self.folder_filter = None  # None means "Search Everything"
-        self.negative_filter = ""  # Empty means "No Negative Filter"
         self.source_filter = {"OCR": True, "EMBED": True, "LLM": True}
         
         self.setWindowTitle("Second Brain")
@@ -1012,11 +1003,10 @@ class MainWindow(QMainWindow):
     def handle_filter(self):
         """Opens the Advanced Search Dialog."""
         # Open dialog with current state
-        dialog = AdvancedSearchDialog(self.negative_filter, self.folder_filter, self.source_filter, self)  # Don't ask me why self is last
+        dialog = AdvancedSearchDialog(self.folder_filter, self.source_filter, self)  # Don't ask me why self is last
         if dialog.exec():
             # Retrieve new state
             self.folder_filter = dialog.folder_path
-            self.negative_filter = dialog.negative_query
             self.source_filter = dialog.source_filter
             # Update Button Visuals
             self.update_filter_icon()
@@ -1026,9 +1016,8 @@ class MainWindow(QMainWindow):
         # Check if any source is disabled (False)
         sources_modified = not all(self.source_filter.values())
         
-        # Filter is active if: Folder is set OR Negative text is set OR Sources are modified
+        # Filter is active if: Folder is set OR Sources are modified
         has_filter = (self.folder_filter is not None) or \
-                     (self.negative_filter is not None) or \
                      sources_modified
 
         if has_filter:
@@ -1039,8 +1028,6 @@ class MainWindow(QMainWindow):
             tips = []
             if self.folder_filter: 
                 tips.append(f"Folder: {Path(self.folder_filter).name}")
-            if self.negative_filter: 
-                tips.append(f"Exclude: {self.negative_filter}")
             if sources_modified:
                 # Show which ones are turned OFF
                 disabled = [k for k, v in self.source_filter.items() if not v]
@@ -1055,15 +1042,14 @@ class MainWindow(QMainWindow):
     def run_search(self):
         """The main entry point to start a search operation. Handles UI updates, worker management, and information collection."""
         query = self.search_input.toPlainText().strip()
-        # Easter Egg: a search can be done with just a negative filter.
-        if not query and not self.attached_file_path and not self.negative_filter:
+        if not query and not self.attached_file_path:
             # This gives user the ability to get a clear slate, optional feature might remove
             self.doc_table.setRowCount(0)
             self.image_list.clear()
             self.llm_output.clear()
             return
         # Initialize data class to coordinate critical search information
-        searchfacts = SearchFacts(query=query, attachment_path=self.attached_file_path, negative_query=self.negative_filter, folder_filter=self.folder_filter, source_filter=self.source_filter)
+        searchfacts = SearchFacts(query=query, attachment_path=self.attached_file_path, folder_filter=self.folder_filter, source_filter=self.source_filter)
         # 1. Stop previous worker if it's still running (prevents race conditions)
         if self.workers:
             for w in self.workers:

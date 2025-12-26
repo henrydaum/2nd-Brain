@@ -42,29 +42,24 @@ class LLMService:
                     return False
 
                 image_paths = [str(job.path)]
-                prompt = (f"Analyze the following image for a search database. Start your analysis with 2-3 search queries/questions that would be used to find this image. After that, provide a brief summary of the image, making sure to note keywords and main topics. Use plain text with no markdown, and output ONLY the analysis. No intro (e.g. 'Here is an analysis'). No outro. Keep it under 150 words.\n\n"
+                prompt = (f"Create a comprehensive, retrieval-optimized summary of this image that captures all key information including main topics, entities (names, dates, places, organizations), and factual details. Use diverse terminology with synonyms and varied phrasings that one might search for, incorporating both technical terms and plain language. Anticipate questions someone might ask and explicitly address those concepts. Use plain text with no markdown, and output ONLY the summary. No intro (e.g. 'Here is a summary'). No outro. Aim for one short paragraph under 100 words.\n\n"
                 f"Filename: {path_obj.name}"
-
-                    # f"Write a list of 3 diverse google search queries/questions that would be used to find this image (filename: {path_obj.name}). Use plain text only. Do not use numbering, bullet points, or markdown. Output ONLY the queries. No intro (e.g. 'Here is a list'). No outro. Write each query on a new line.\n"
                 )
             
             # B. TEXT ANALYSIS
             elif is_text:
                 drive_service = get_drive_service(self.config)
 
-                context_limit = 10000
+                context_limit = 20000
                 text = get_text_content(Path(job.path), drive_service, self.config)[:context_limit]
                 if not text:
                     logger.warning("LLM run - no valid text extracted.")
                     return False
 
-                prompt = (f"Analyze the following document for a search database. Start your analysis with 2-3 search queries/questions that would be used to find this document. After that, provide a brief summary of the doc, making sure to note keywords and main topics. Use plain text with no markdown, and output ONLY the analysis. No intro (e.g. 'Here is an analysis'). No outro. Keep it under 150 words.\n\n"
+                prompt = (f"Create a comprehensive, retrieval-optimized summary of this document that captures all key information including main topics, entities (names, dates, places, organizations), and factual details. Use diverse terminology with synonyms and varied phrasings that one might search for, incorporating both technical terms and plain language. Anticipate questions someone might ask and explicitly address those concepts. Use plain text with no markdown, and output ONLY the summary. No intro (e.g. 'Here is a summary'). No outro. Aim for one short paragraph under 100 words.\n\n"
                 f"Filename: {path_obj.name}. Content:"
-                f"{text}"
-
-                    # f"Write a list of 7 diverse google search queries/questions that are answered by the text below (filename: {path_obj.name}). Use plain text only. Do not use numbering, bullet points, or markdown. Output ONLY the queries. No intro (e.g. 'Here is a list'). No outro. Write each query on a new line.\n\n"
-                    # f"{text}\n"
-                )  # 7 is a lucky number
+                f"{text}" 
+                )
 
             else:
                 logger.warning(f"✗ Skipping unsupported file: {path_obj.name}")

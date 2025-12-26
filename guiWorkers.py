@@ -51,13 +51,14 @@ class SearchFacts:
     """Holds all data for a single user request and its results."""
     from typing import List, Optional, Any, Dict
     query: str = ""
+
     attachment_path: Optional[Path] = None
     text_attachment: str = None
     image_attachment: str = None
+
     image_search_results: List[Dict[str, Any]] = field(default_factory=list)
     text_search_results: List[Dict[str, Any]] = field(default_factory=list)
 
-    negative_query: str = ""
     folder_filter: str = ""
     source_filter: dict = field(default_factory=dict)
 
@@ -83,7 +84,12 @@ class SearchWorker(QThread):
             attachment_ext = Path(self.searchfacts.attachment_path).suffix.lower()
             if attachment_ext in self.search_engine.config['text_extensions']:
                 # Extract text here
-                ...
+                from services.utils import get_text_content, get_drive_service
+                drive_service = get_drive_service(self.search_engine.config)
+                text = get_text_content(Path(self.searchfacts.attachment_path), drive_service, self.search_engine.config)
+                text_chunk = text[:self.search_engine.config.get('chunk_size', 1024)]  # Cut off at chunk size
+                logger.info(f"Attachment text extracted: {text_chunk}...")
+                self.searchfacts.text_attachment = text_chunk
             elif attachment_ext in self.search_engine.config['image_extensions']:
                 self.searchfacts.image_attachment = self.searchfacts.attachment_path
 
@@ -96,7 +102,7 @@ class SearchWorker(QThread):
         if self.searchfacts.image_attachment:
             query_tuples.append(("image", self.searchfacts.image_attachment))
 
-        final_results = self.search_engine.hybrid_search(query_tuples, self.searchfacts.negative_query, top_k=30, folder_path=self.searchfacts.folder_filter, valid_sources=self.searchfacts.source_filter)
+        final_results = self.search_engine.hybrid_search(query_tuples, top_k=30, folder_filter=self.searchfacts.folder_filter, source_filter=self.searchfacts.source_filter)
 
         text_results = final_results['text']
         image_results = final_results['image']
