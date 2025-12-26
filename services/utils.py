@@ -25,7 +25,7 @@ from Parsers import _EXTENSION_MAPPING, file_handler, parse_gdoc
 logger = logging.getLogger("Utils")
 
 # --- TEXT SPLITTER ---
-class RecursiveTokenSplitter:
+class RecursiveCharacterSplitter:
     def __init__(self, chunk_size=500, chunk_overlap=50):
         # The logic uses character count, not token count, which is simpler and fine for the current scope.
         self.chunk_size = chunk_size
@@ -89,7 +89,7 @@ def is_gibberish(text, min_len=25):
         return True
     
     # 1. Whitespace check - Real text has word boundaries
-    # Catches URLs, hashes, long identifiers (universal across languages)
+    # Catches URLs, hashes, long identifiers (universal across Proto-Indo European languages - any who use spaces)
     space_ratio = text.count(' ') / len(text)
     if space_ratio < 0.05:  # Less than 5% spaces
         return True
@@ -117,7 +117,7 @@ def is_gibberish(text, min_len=25):
         else:
             current_repeat = 1
     
-    if max_char_repeat > 5:  # Same character repeated >5 times
+    if max_char_repeat > 10:  # Same character repeated >10 times
         return True
     
     # 4. Compression ratio - Works across all languages and scripts!
@@ -189,10 +189,15 @@ def get_text_content(file_path: pathlib.Path, drive_service, config) -> str:
     limit = config.get("max_text_chars", 500000)
     content = handler(file_path, drive_service, limit) if handler == parse_gdoc else handler(file_path, limit)
 
-    if not content or content == "[IMAGE]": # Only text files should be processed here
+    if not content or content == " ": # Only text files should be processed here
         logger.warning(f"Did not extract any text: {file_path.name}")
         return ""
 
     # 3. Clean and Split Content
-    content = re.sub(r'\s+', ' ', content).strip()
+    # Replace multiple spaces/tabs with one space
+    content = re.sub(r'[ \t]+', ' ', content)
+    # Limit newlines to max 2 (paragraph break) to remove massive gaps
+    content = re.sub(r'\n{3,}', '\n\n', content)
+    content = content.strip()
+    # Don't forget this!
     return content

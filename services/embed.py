@@ -7,7 +7,7 @@ import io
 from PIL import Image
 import numpy as np
 # Internal
-from services.utils import process_text_file, is_gibberish, RecursiveTokenSplitter
+from services.utils import process_text_file, is_gibberish, RecursiveCharacterSplitter
 from Parsers import get_drive_service
 
 logger = logging.getLogger("EmbedService")
@@ -21,7 +21,7 @@ class EmbedService:
         # Initialize Splitter (using config values)
         chunk_size = config.get('chunk_size', 1024)
         chunk_overlap = config.get('chunk_overlap', 64)
-        self.text_splitter = RecursiveTokenSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        self.text_splitter = RecursiveCharacterSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 
     def run_batch(self, jobs, batch_type):
         """
@@ -34,20 +34,20 @@ class EmbedService:
             try:
                 return self._run_text_batch(jobs)
             except Exception as e:
-                logger.error(f"Text Embed Batch failed: {e}")
+                logger.error(f"✗ Text Embed Batch failed: {e}")
                 return []
         elif batch_type == "image":
             try:
                 return self._run_image_batch(jobs)
             except Exception as e:
-                logger.error(f"Image Embed Batch failed: {e}")
+                logger.error(f"✗ Image Embed Batch failed: {e}")
                 return []
         
         return successful_paths
 
     def _run_text_batch(self, jobs):
         if not self.text_model.loaded:
-            logger.warning("Text Embed Batch attempted while model unloaded.")
+            logger.warning("✗ Text Embed Batch attempted while model unloaded.")
             return []
 
         # List of (chunk_index, chunk_text, job_path) tuples
@@ -75,7 +75,7 @@ class EmbedService:
                     all_chunks_data.append((index, chunk_text, job.path))
                     text_inputs.append(chunk_text)
             except Exception as e:
-                logger.error(f"Failed to get text chunks for {job.path}: {e}")
+                logger.error(f"✗ Failed to get text chunks for {job.path}: {e}")
 
         if not text_inputs: 
             return []
@@ -85,33 +85,36 @@ class EmbedService:
             logger.info(f"Embedding {len(text_inputs)} text chunks...")
             embeddings_numpy = self.text_model.encode(text_inputs, batch_size=self.config.get("batch_size", 11))
         except Exception as e:
-            logger.error(f"Text embedding batch failed: {e}")
+            logger.error(f"✗ Text embedding batch failed: {e}")
             return []
 
         if embeddings_numpy is None:
-            logger.warning("Text embedding batch failed: no embeddings returned.")
+            logger.warning("✗ Text embedding batch failed: no embeddings returned.")
             return []
 
         # 2. Save Results (Chunk by Chunk)
-        successful_paths = set()
-        for i, (index, chunk_text, job_path) in enumerate(all_chunks_data):
-            try:
+        successful_paths = set()  # Set because multiple chunks per file
+        data_list = []
+        try:
+            for i, (index, chunk_text, job_path) in enumerate(all_chunks_data):
                 vector_bytes = embeddings_numpy[i].tobytes()
-                # Store (index, text_content, embedding_bytes)
-                self.db.save_embeddings(
-                    job_path, 
-                    [(index, chunk_text, vector_bytes, self.text_model.model_name)]
-                )
+                data = (job_path, index, chunk_text, vector_bytes, self.text_model.model_name)
+                data_list.append(data)
                 successful_paths.add(job_path)
-            except Exception as e:
-                logger.error(f"Save failed for chunk {index} in {job_path}: {e}")
 
-        logger.info(f"Successfully saved {len(all_chunks_data)} text embeddings for {len(successful_paths)} file(s).")
+            # Commit
+            self.db.save_embeddings(data_list)
+
+        except Exception as e:
+            logger.error(f"✗ Text batch embed save failed for {job_path}: {e}")
+            return []
+
+        logger.info(f"✓ Successfully saved {len(all_chunks_data)} text embeddings for {len(successful_paths)} file(s).")
         return list(successful_paths)
 
     def _run_image_batch(self, jobs):
         if not self.image_model.loaded:
-            logger.warning("Image Embed Batch attempted while model unloaded.")
+            logger.warning("✗ Image Embed Batch attempted while model unloaded.")
             return []
 
         image_objects = []
@@ -127,7 +130,7 @@ class EmbedService:
                     image_objects.append(img.copy()) 
                     valid_jobs.append(job)
             except Exception as e:
-                logger.error(f"Failed to load image {job.path}: {e}")
+                logger.error(f"✗ Failed to load image {job.path}: {e}")
 
         if not image_objects: return []
 
@@ -135,57 +138,59 @@ class EmbedService:
         try:
             image_embeddings_numpy = self.image_model.encode(image_objects, batch_size=self.config.get("batch_size", 11))
         except Exception as e:
-            logger.error(f"Image embedding batch failed: {e}")
+            logger.error(f"✗ Image embedding batch failed: {e}")
             return []
 
         if image_embeddings_numpy is None:
-            logger.warning("Image embedding batch failed: no embeddings returned.")
+            logger.warning("✗ Image embedding batch failed: no embeddings returned.")
             return []
 
         # 2. Save Results (One embedding per image)
         successful_paths = []
-        for i, job in enumerate(valid_jobs):
-            try:
-                # We use a placeholder for the required text field.
-                image_text_placeholder = "[IMAGE]"
-                
+        data_list = []
+        try:
+            for i, job in enumerate(valid_jobs):
+                # Use a placeholder for the required text field.
+                image_text_placeholder = " "
                 vector_bytes = image_embeddings_numpy[i].tobytes()
-                
-                # Format: [(chunk_index=0, text_content, embedding_bytes)]
-                data = [(0, image_text_placeholder, vector_bytes, self.image_model.model_name)]
-                
-                self.db.save_embeddings(job.path, data)
+                data = (job.path, 0, image_text_placeholder, vector_bytes, self.image_model.model_name)
+                data_list.append(data)                
                 successful_paths.append(job.path)
-            except Exception as e:
-                logger.error(f"Save failed for image {job.path}: {e}")
+
+            # Commit
+            self.db.save_embeddings(data_list)
+
+        except Exception as e:
+            logger.error(f"✗ Image batch embed save failed for {job.path}: {e}")
+            return []
         
-        logger.info(f"Successfully saved {len(successful_paths)} image embeddings.")
+        logger.info(f"✓ Successfully saved {len(successful_paths)} image embeddings.")
         return successful_paths
 
     def run_embed_llm(self, job):
         if not self.text_model.loaded:
-            logger.warning("LLM Embed attempted while model unloaded.")
+            logger.warning("✗ LLM Embed attempted while model unloaded.")
             return False
         
         try:
             llm_response = self.db.get_llm_result(job.path)
 
             if not llm_response:
-                logger.warning(f"No LLM response to embed: {Path(job.path).name}")
+                logger.warning(f"✗ No LLM response to embed: {Path(job.path).name}")
                 return False
             
             embeddings_numpy = self.text_model.encode([llm_response], batch_size=self.config['batch_size'])
             
             if embeddings_numpy is None or len(embeddings_numpy) == 0:
-                logger.warning(f"Failed to get llm embedding: {Path(job.path).name}")
+                logger.warning(f"✗ Failed to get llm embedding: {Path(job.path).name}")
                 return False
             
             vector_bytes = embeddings_numpy[0].tobytes()
-            data = (-1, llm_response, vector_bytes, self.text_model.model_name)  # Use negative indices < 0
-            self.db.save_embeddings(job.path, [data])
+            data = (job.path, -1, llm_response, vector_bytes, self.text_model.model_name)  # Use negative indices < 0
+            self.db.save_embeddings([data])
 
-            logger.info(f"Successfully saved LLM Embedding for: {Path(job.path).name}")
+            logger.info(f"✓ Successfully saved LLM Embedding for: {Path(job.path).name}")
             return True
         except Exception as e:
-            logger.error(f"Failed to embed LLM response: {Path(job.path).name}: {e}")
+            logger.error(f"✗ Failed to embed LLM response: {Path(job.path).name}: {e}")
             return False

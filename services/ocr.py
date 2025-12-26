@@ -12,7 +12,7 @@ class OCRService:
             logger.warning("OCR Job attempted while model unloaded.")
             return False
 
-        logger.info(f"Scanning image: {job.path}")
+        # logger.info(f"Scanning image: {job.path}")
 
         # 1. Run Model
         text = self.model.process_image(job.path)

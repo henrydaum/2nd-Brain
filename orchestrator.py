@@ -236,7 +236,7 @@ class Orchestrator:
                 # Exit early, task stays pending for next time.
                 if not (self.models['text'].loaded):
                     return
-                logger.info(f"Starting summary embedding for: {Path(job.path).name}")
+                # logger.info(f"Starting summary embedding for: {Path(job.path).name}")
                 success = self.embed_service.run_embed_llm(job)
                 if success:
                     self.db.mark_completed(job.path, "EMBED_LLM")

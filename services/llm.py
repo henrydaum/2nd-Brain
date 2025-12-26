@@ -18,13 +18,13 @@ class LLMService:
     def run(self, job):
         try:
             if not self.model.loaded:
-                logger.warning("LLM Job attempted while model unloaded.")
+                logger.warning("✗ LLM Job attempted while model unloaded.")
                 return False
 
             path_obj = Path(job.path)
             model_name = getattr(self.model, 'model_name', 'system')
 
-            logger.info(f"Analyzing: {path_obj.name}...")
+            # logger.info(f"Analyzing: {path_obj.name}...")
             
             # --- PREPARE CONTEXT & PROMPT ---
             
@@ -48,23 +48,28 @@ class LLMService:
             
             # B. TEXT ANALYSIS
             elif is_text:
-                drive_service = get_drive_service(self.config)
+                try:
+                    drive_service = get_drive_service(self.config)
 
-                context_limit = 20000
-                full_text = get_text_content(Path(job.path), drive_service, self.config)[:context_limit]
-                if not full_text:
-                    logger.warning("LLM run - no valid text extracted.")
+                    context_limit = 20000
+                    full_text = get_text_content(Path(job.path), drive_service, self.config)
+                    if not full_text:
+                        logger.warning("LLM run - no valid text extracted.")
+                        return False
+                
+                    # Get head + tail if too long
+                    if len(full_text) > context_limit:
+                        # Take first 15k chars (Intro/Body)
+                        head = full_text[:15000]
+                        # Take last 5k chars (Conclusion/Results)
+                        tail = full_text[-5000:]
+                        text = f"{head}\n\n... [Content Truncated] ...\n\n{tail}"
+                    else:
+                        text = full_text
+
+                except Exception as e:
+                    logger.error(f"✗ Failed to extract text for LLM {path_obj.name}: {e}")
                     return False
-                    
-                # Get head + tail if too long
-                if len(full_text) > context_limit:
-                    # Take first 15k chars (Intro/Body)
-                    head = full_text[:15000]
-                    # Take last 5k chars (Conclusion/Results)
-                    tail = full_text[-5000:]
-                    text = f"{head}\n\n... [Content Truncated] ...\n\n{tail}"
-                else:
-                    text = full_text
 
                 prompt = (f"Analyze this document for a search engine index by generating a direct, factual description of the context, followed immediately by a comprehensive list of relevant search keywords, synonyms, and entities. Keep the description dry and robotic, avoiding flowery language or meta-phrases like 'this image depicts,' and instead focus strictly on visible objects, actions, and specific data. Output only the plain text result consisting of the factual description followed by the comma-separated keyword list.\n\n"
                 f"Filename: {path_obj.name}. Content:"
@@ -79,7 +84,7 @@ class LLMService:
             # Invoke LLM
             response = self.model.invoke(prompt, image_paths=image_paths, temperature=0.3)
             if ("LM Studio Invoke Error" in response) or ("OpenAI Invoke Error" in response):
-                logger.error(f"LLM invocation error for {path_obj.name}")
+                logger.error(f"✗ LLM invocation error for {path_obj.name}")
                 return False
 
             cleaned_response = response.strip()
@@ -90,5 +95,5 @@ class LLMService:
             return True
 
         except Exception as e:
-            logger.error(f"Failed for {path_obj.name}: {e}")
+            logger.error(f"✗ Failed for {path_obj.name}: {e}")
             return False

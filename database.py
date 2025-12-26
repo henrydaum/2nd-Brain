@@ -256,13 +256,13 @@ class Database:
             """, (path, text, model_name))
             self.conn.commit()
 
-    def save_embeddings(self, path, data):
+    def save_embeddings(self, data):
         # data = [(index, text, embedding_bytes, model_name), ...]
         with self.lock:
             self.conn.executemany("""
                 INSERT OR REPLACE INTO embeddings (path, chunk_index, text_content, embedding, model_name)
                 VALUES (?, ?, ?, ?, ?)
-            """, [(path, *c) for c in data])
+            """, data)
             self.conn.commit()
 
     def save_llm_result(self, path, response, model_name):

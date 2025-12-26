@@ -19,37 +19,16 @@ class WindowsOCR:
         self.config = config or {}
         self.enabled = False
         self.model_name = "winrt_windows_ocr"
-        self.OCR_LIB_AVAILABLE = False
 
     @property
     def loaded(self):
-        return self.enabled and self.OCR_LIB_AVAILABLE
+        return self.enabled
 
     def load(self):
         """Just imports stuff and checks if library is present and enables the flag."""
         logger.info("Enabling Windows OCR")
         # Must import this before other .dlls
         import torch
-
-        # Use your preferred imports (winrt) with a fallback just in case
-        try:
-            from winrt.windows.media.ocr import OcrEngine
-            from winrt.windows.graphics.imaging import BitmapDecoder
-            from winrt.windows.storage import StorageFile
-            self.OCR_LIB_AVAILABLE = True
-        except ImportError:
-            try:
-                # Fallback to winsdk if winrt is missing (same API)
-                from winsdk.windows.media.ocr import OcrEngine
-                from winsdk.windows.graphics.imaging import BitmapDecoder
-                from winsdk.windows.storage import StorageFile
-                self.OCR_LIB_AVAILABLE = True
-            except ImportError:
-                self.OCR_LIB_AVAILABLE = False
-
-        if not self.OCR_LIB_AVAILABLE:
-            logger.error("[Error] 'winrt' or 'winsdk' not installed. OCR unavailable.")
-            return False
         
         self.enabled = True
         logger.info("Windows OCR loaded.")
@@ -63,6 +42,7 @@ class WindowsOCR:
         """
         The Orchestrator calls this. We use YOUR proven logic here.
         """
+        
         if not self.enabled: return ""
         if not os.path.exists(image_path): return ""
 
@@ -91,6 +71,10 @@ class WindowsOCR:
         """
         Your exact async logic. Creates engine ON THE FLY to prevent crashes.
         """
+        from winrt.windows.media.ocr import OcrEngine
+        from winrt.windows.graphics.imaging import BitmapDecoder
+        from winrt.windows.storage import StorageFile
+
         try:
             abs_path = os.path.abspath(image_path)
             
