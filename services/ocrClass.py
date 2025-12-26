@@ -37,6 +37,7 @@ class WindowsOCR:
     def __init__(self, config=None):
         self.config = config or {}
         self.enabled = False
+        self.model_name = "winrt_windows_ocr"
 
     @property
     def loaded(self):

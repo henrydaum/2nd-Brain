@@ -83,13 +83,17 @@ class SearchWorker(QThread):
         if self.searchfacts.attachment_path:
             attachment_ext = Path(self.searchfacts.attachment_path).suffix.lower()
             if attachment_ext in self.search_engine.config['text_extensions']:
-                # Extract text here
-                from services.utils import get_text_content, get_drive_service
-                drive_service = get_drive_service(self.search_engine.config)
-                text = get_text_content(Path(self.searchfacts.attachment_path), drive_service, self.search_engine.config)
-                text_chunk = text[:self.search_engine.config.get('chunk_size', 1024)]  # Cut off at chunk size
-                logger.info(f"Attachment text extracted: {text_chunk}...")
-                self.searchfacts.text_attachment = text_chunk
+                try:
+                    # Extract text here
+                    from services.utils import get_text_content, get_drive_service
+                    drive_service = get_drive_service(self.search_engine.config)
+                    text = get_text_content(Path(self.searchfacts.attachment_path), drive_service, self.search_engine.config)
+                    text_chunk = text[:self.search_engine.config.get('chunk_size', 1024)]  # Cut off at chunk size
+                    logger.info(f"Attachment text extracted: {text_chunk}...")
+                    self.searchfacts.text_attachment = text_chunk
+                except Exception as e:
+                    logger.error(f"Error extracting text from attachment: {e}")
+                    self.searchfacts.text_attachment = ""
             elif attachment_ext in self.search_engine.config['image_extensions']:
                 self.searchfacts.image_attachment = self.searchfacts.attachment_path
 
@@ -242,6 +246,7 @@ class DatabaseActionWorker(QThread):
         self.service_keys = service_keys
 
     def run(self):
+        logger.info(f"DatabaseActionWorker started: {self.action_type} on {self.service_keys}")
         try:
             if self.action_type == 'retry_failed':
                 self.db.retry_all_failed()

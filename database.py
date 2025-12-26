@@ -22,7 +22,7 @@ class Database:
 
     def _setup_tables(self):
         with self.lock:
-            # WAL mode
+            # WAL (write-ahead logging) mode - read and write can occur simultaneously
             self.conn.execute("PRAGMA journal_mode=WAL;")
             
             # Primary Key is (path, task_type)
@@ -32,8 +32,6 @@ class Database:
                     task_type TEXT,
                     status TEXT DEFAULT 'PENDING',
                     file_mtime REAL,
-                    result TEXT,
-                    updated_at REAL,
                     PRIMARY KEY(path, task_type)
                 )
             """)
@@ -52,8 +50,7 @@ class Database:
                 CREATE TABLE IF NOT EXISTS ocr_results (
                     path TEXT PRIMARY KEY,
                     text_content TEXT,
-                    engine_name TEXT,
-                    updated_at REAL
+                    model_name TEXT
                 )
             """)
 
@@ -74,8 +71,7 @@ class Database:
                 CREATE TABLE IF NOT EXISTS llm_analysis (
                     path TEXT PRIMARY KEY,
                     response TEXT,
-                    model_name TEXT,
-                    updated_at REAL
+                    model_name TEXT
                 )
             """)
 
@@ -128,26 +124,28 @@ class Database:
                     DELETE FROM search_index WHERE path = old.path AND source = 'ocr';
                 END;
             """)
+
+            # LLM Analysis triggers not needed because they are embedded and then inserted via the embeddings trigger.
             self.conn.commit()
 
     # STATE MANAGEMENT
 
     def add_or_update_task(self, path: str, task_type: str, status: str = "PENDING", mtime: float = 0.0):
         with self.lock:
-            # CHANGE: Conflict is now on (path, task_type)
+            # Key is (path, task_type)
             self.conn.execute("""
-                INSERT INTO tasks (path, task_type, status, file_mtime, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO tasks (path, task_type, status, file_mtime)
+                VALUES (?, ?, ?, ?)
                 ON CONFLICT(path, task_type) DO UPDATE SET
                     status=excluded.status,
-                    file_mtime = CASE WHEN excluded.file_mtime > 0 THEN excluded.file_mtime ELSE tasks.file_mtime END,
-                    updated_at=excluded.updated_at
-            """, (path, task_type, status, mtime, time.time()))
+                    file_mtime = CASE WHEN excluded.file_mtime > 0 THEN excluded.file_mtime ELSE tasks.file_mtime END
+            """, (path, task_type, status, mtime))
             self.conn.commit()
     
     def remove_task(self, path: str):
-        # Removes ALL tasks for this file (cleanup)
+        # Removes ALL traces of this file (cleanup) - all 5 tables
         with self.lock:
+            # 1. Clear Service Data
             self.conn.execute("DELETE FROM ocr_results WHERE path=?", (path,))
             self.conn.execute("DELETE FROM embeddings WHERE path=?", (path,))
             self.conn.execute("DELETE FROM llm_analysis WHERE path=?", (path,))
@@ -159,15 +157,14 @@ class Database:
             self.conn.execute("DELETE FROM tasks WHERE path=?", (path,))
             self.conn.commit()
 
-    def mark_completed(self, path: str, task_type: str, result: str):
+    def mark_completed(self, path: str, task_type: str):
         # CHANGE: We must specify task_type to know WHICH task finished
-        import time
         with self.lock:
             self.conn.execute("""
                 UPDATE tasks 
-                SET status='DONE', result=?, updated_at=? 
+                SET status='DONE'
                 WHERE path=? AND task_type=?
-            """, (result, time.time(), path, task_type))
+            """, (path, task_type))
             self.conn.commit()
 
     # DATA RETRIEVAL FUNCTIONS
@@ -180,8 +177,7 @@ class Database:
 
     def get_all_file_states(self):
         """
-        Returns a dictionary of {file_path: last_modified_timestamp} 
-        for efficient 'diffing' against the file system.
+        Returns a dictionary of {file_path: last_modified_timestamp} for efficient 'diffing' against the file system.
         """
         with self.lock:
             cur = self.conn.execute("SELECT path, file_mtime FROM tasks")
@@ -234,6 +230,10 @@ class Database:
             # LLM: One row per file
             cur = self.conn.execute("SELECT COUNT(*) FROM llm_analysis")
             stats["LLM"]["DB_ROWS"] = cur.fetchone()[0]
+
+            # EMBED_LLM: Embeddings with negative chunk_index
+            cur = self.conn.execute("SELECT COUNT(DISTINCT path) FROM embeddings WHERE chunk_index < 0")
+            stats["EMBED_LLM"]["DB_ROWS"] = cur.fetchone()[0]
             
             # 4. Total Unique Files Tracked
             cur = self.conn.execute("SELECT COUNT(DISTINCT path) FROM tasks")
@@ -243,26 +243,30 @@ class Database:
 
     # SAVE FUNCTIONS FOR SERVICES
     
-    def save_ocr_result(self, path, text):
+    def save_ocr_result(self, path, text, model_name):
         with self.lock:
-            self.conn.execute("INSERT OR REPLACE INTO ocr_results VALUES (?, ?, 'winrt', ?)", 
-                             (path, text, time.time()))
+            self.conn.execute("""
+                INSERT OR REPLACE INTO ocr_results (path, text_content, model_name) 
+                VALUES (?, ?, ?)
+            """, (path, text, model_name))
             self.conn.commit()
 
     def save_embeddings(self, path, data):
         # data = [(index, text, embedding_bytes, model_name), ...]
         with self.lock:
-            self.conn.executemany("INSERT OR REPLACE INTO embeddings VALUES (?, ?, ?, ?, ?)", 
-                                 [(path, *c) for c in data])
+            self.conn.executemany("""
+                INSERT OR REPLACE INTO embeddings (path, chunk_index, text_content, embedding, model_name)
+                VALUES (?, ?, ?, ?, ?)
+            """, [(path, *c) for c in data])
             self.conn.commit()
 
-    def save_llm_result(self, path, response, model_name="local"):
+    def save_llm_result(self, path, response, model_name):
         with self.lock:
             # CHANGE: Now accepts and saves chunk_index
-            self.conn.execute(
-                "INSERT OR REPLACE INTO llm_analysis (path, response, model_name, updated_at) VALUES (?, ?, ?, ?)", 
-                (path, response, model_name, time.time())
-            )
+            self.conn.execute("""
+                INSERT OR REPLACE INTO llm_analysis (path, response, model_name) 
+                VALUES (?, ?, ?)
+            """, (path, response, model_name))
             self.conn.commit()
 
     # SEARCH FUNCTION
@@ -299,13 +303,16 @@ class Database:
         """
         with self.lock:
             if service_key == 'OCR':
+                self.conn.execute("DELETE FROM search_index WHERE source = 'ocr'")  # Not strictly necessary due to triggers, but safe.
                 self.conn.execute("DELETE FROM ocr_results")
             elif service_key == 'EMBED':
+                self.conn.execute("DELETE FROM search_index WHERE source = 'embed'")
                 self.conn.execute("DELETE FROM embeddings WHERE chunk_index >= 0")
             elif service_key == 'LLM':
+                self.conn.execute("DELETE FROM search_index WHERE source = 'llm'")
                 self.conn.execute("DELETE FROM llm_analysis")
                 self.conn.execute("DELETE FROM embeddings WHERE chunk_index < 0")
-                self.conn.execute("DELETE FROM tasks WHERE task_type='EMBED_LLM'")
+                self.conn.execute("DELETE FROM tasks WHERE task_type='EMBED_LLM'")  # These will be remade
 
             # 3. Reset the tasks so they run again
             self.conn.execute("UPDATE tasks SET status='PENDING' WHERE task_type=?", (service_key,))

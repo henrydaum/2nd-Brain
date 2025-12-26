@@ -3,7 +3,7 @@ from pathlib import Path
 import time
 import time
 import logging
-from threading import Timer
+import threading
 # 3rd Party
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -21,7 +21,7 @@ class FileWatcherService:
             self.watch_dirs = raw_sync
         else:
             logger.error("In config.json, sync_directories must be a list.")
-        # This is to get around an issue where viewing an image triggers a modify event:
+        # This is to get around an issue where viewing an image triggers a modify event (held in memory):
         self._known_mtimes = {}
         # These are all the valid extensions:
         self.image_extensions = config.get('image_extensions', [])
@@ -74,21 +74,21 @@ class FileWatcherService:
         """Helper to queue ALL independent tasks for a file."""
         ext = Path(path).suffix.lower()
         
-        # 1. Embed (for text and image)
+        # 1. Embed (text and image)
         if (ext in self.text_extensions) or (ext in self.image_extensions):
             self.orchestrator.submit_task("EMBED", path, priority=2, mtime=mtime)
         
-        # 2. LLM (for text and image)
+        # 2. LLM (text and image)
         if (ext in self.text_extensions) or (ext in self.image_extensions):
             self.orchestrator.submit_task("LLM", path, priority=2, mtime=mtime)
         
-        # 3. OCR (Only images)
+        # 3. OCR (image only)
         if ext in self.image_extensions:
             self.orchestrator.submit_task("OCR", path, priority=2, mtime=mtime)
 
     def _run_initial_scan(self, valid_dirs):
         """Shotgun approach: If file is modified, queue ALL tasks."""
-        db_state = self.orchestrator.db.get_all_file_states()
+        db_state = self.orchestrator.db.get_all_file_states()  # From the SQL database
         disk_files = set()
         
         for watch_dir in valid_dirs:
@@ -113,9 +113,9 @@ class FileWatcherService:
         # Cleanup Ghosts
         for db_path in db_state:
             # 3. If you removed .txt from config, .txt files won't be in disk_files
-            #    So this standard check will catch them and DELETE them.
+            # So this standard check will catch them and DELETE them.
             if db_path not in disk_files:
-                logger.info(f"[Sync] Pruning: {Path(db_path).name}")
+                logger.info(f"[Sync] Deleting Ghost: {Path(db_path).name}")
                 self.orchestrator.submit_task("DELETE", db_path, priority=0)  # Highest priority
                 continue
 
@@ -126,45 +126,49 @@ class DebouncedEventHandler(FileSystemEventHandler):
         self.service = parent_service
         self.debounce_interval = 1.0
         self.pending_timers = {}
+        self.lock = threading.Lock()
 
     def _debounce_task(self, path, task_type):
-        if path in self.pending_timers:
-            self.pending_timers[path].cancel()
-        timer = Timer(self.debounce_interval, self._submit_to_orchestrator, [path, task_type])
-        self.pending_timers[path] = timer
-        timer.start()
+        with self.lock:
+            if path in self.pending_timers:
+                self.pending_timers[path].cancel()
+            # Triggers just one call for multiple rapid events in a time interval
+            timer = threading.Timer(self.debounce_interval, self._submit_to_orchestrator, [path, task_type])
+            self.pending_timers[path] = timer
+            timer.start()
 
     def _submit_to_orchestrator(self, path, task_type):
-        if path in self.pending_timers: del self.pending_timers[path]
-        if not os.path.exists(path) and task_type != "DELETE": return
+        with self.lock:
+            if path in self.pending_timers: del self.pending_timers[path]
+            if not os.path.exists(path) and task_type != "DELETE": return
 
-        # This is to get around an issue where viewing an image triggers a modify event:
-        if task_type != "DELETE":
-            try:
-                current_mtime = os.path.getmtime(path)
-                last_mtime = self.service._known_mtimes.get(path)
+            # This is to get around an issue where viewing an image triggers a modify event:
+            if task_type != "DELETE":
+                try:
+                    current_mtime = os.path.getmtime(path)
+                    last_mtime = self.service._known_mtimes.get(path)
 
-                # If timestamp hasn't changed (threshold 0.1s), it's a false alarm (just a read event)
-                if last_mtime and abs(current_mtime - last_mtime) < 0.1:
-                    # This happens too often to say every time
-                    # logger.info(f"[Watcher] Event false alarm: {task_type} -> {Path(path).name}")
-                    return 
-                # Update cache
-                self.service._known_mtimes[path] = current_mtime
-            except OSError:
-                return
+                    # If timestamp hasn't changed (threshold 0.1s), it's a false alarm (just a read event)
+                    if last_mtime and abs(current_mtime - last_mtime) < 0.1:
+                        # This happens too often to say every time
+                        # logger.info(f"[Watcher] Event false alarm: {task_type} -> {Path(path).name}")
+                        return 
+                    # Update cache
+                    self.service._known_mtimes[path] = current_mtime
+                except OSError:
+                    return
 
-        logger.info(f"[Watcher] Event stable: {task_type} -> {Path(path).name}")
-        
-        if task_type == "DELETE":
-             self.orchestrator.submit_task("DELETE", path, priority=1)
-        else:
-             try:
-                 mtime = os.path.getmtime(path)
-                 # Use the same helper as initial scan!
-                 self.service._queue_all_tasks(path, mtime)
-             except OSError:
-                 pass 
+            logger.info(f"[Sync] Event stable: {task_type} -> {Path(path).name}")
+            
+            if task_type == "DELETE":
+                self.orchestrator.submit_task("DELETE", path, priority=1)
+            else:
+                try:
+                    mtime = os.path.getmtime(path)
+                    # Use the same helper as initial scan!
+                    self.service._queue_all_tasks(path, mtime)
+                except OSError:
+                    pass 
 
     # Event wrappers (Same as before)
     def on_modified(self, event):

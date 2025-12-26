@@ -19,12 +19,12 @@ class OCRService:
         
         # 2. Save Result
         if text and text.strip():
-            self.db.save_ocr_result(job.path, text)
+            self.db.save_ocr_result(job.path, text, self.model.model_name)
             logger.info(f"✓ OCR extracted {len(text)} chars from {job.path}")
         else:
             # FIX: We save an empty result so the DB knows we checked this file.
             # We do NOT mark the task as DONE here; the Orchestrator handles that.
-            self.db.save_ocr_result(job.path, " ")
+            self.db.save_ocr_result(job.path, " ", self.model.model_name)
             logger.info(f"OCR found no text in {job.path}")
 
         return True

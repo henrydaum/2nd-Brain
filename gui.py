@@ -932,11 +932,12 @@ class MainWindow(QMainWindow):
             p = data.get("PENDING", 0)
             d = data.get("DONE", 0)
             f = data.get("FAILED", 0)
+            r = data.get("DB_ROWS", 0)
             total = d + f + p
             if total == 0:
                 pct = 100.00
             else:
-                pct = 100 * ((d + f) / total)
+                pct = 100 * ((d + f) / total) 
             return f"[{name} {icon}] {pct:.2f}%"
         # Build the sections
         s_ocr = fmt_stat("OCR", "ocr", stats.get("OCR", {}))

@@ -144,6 +144,8 @@ class Orchestrator:
                         self.text_buffer.append(job)
                         if len(self.text_buffer) >= self.BATCH_SIZE:
                             self._flush_buffer("text")
+                    else:
+                        self.db.add_or_update_task(job.path, "EMBED", "FAILED")
                 else:
                     self.executor.submit(self._execute_job_wrapper, job)
 
@@ -189,7 +191,7 @@ class Orchestrator:
             for job in jobs:
                 if job.path in success_set:
                     # SUCCESS: Mark as Done
-                    self.db.mark_completed(job.path, "EMBED", "DONE")
+                    self.db.mark_completed(job.path, "EMBED")
                 else:
                     # FAILURE: Mark as FAILED (e.g. model was unloaded)
                     self.db.add_or_update_task(job.path, "EMBED", "FAILED")
@@ -207,7 +209,7 @@ class Orchestrator:
                     return
                 success = self.ocr_service.run(job)
                 if success:
-                    self.db.mark_completed(job.path, "OCR", "DONE")
+                    self.db.mark_completed(job.path, "OCR")
                 else:
                     # FAILURE: Mark as FAILED (e.g. model was unloaded)
                     self.db.add_or_update_task(job.path, "OCR", "FAILED")
@@ -218,11 +220,14 @@ class Orchestrator:
                     return
                 success = self.llm_service.run(job)
                 if success:
-                    self.db.mark_completed(job.path, "LLM", "DONE")
+                    self.db.mark_completed(job.path, "LLM")
                     # Make the new task for embedding the summary, with high prio
-                    mtime = os.path.getmtime(job.path)
-                    self.submit_task("EMBED_LLM", job.path, priority=1, mtime=mtime)
-                    # logger.info("Queued a new task for summary embedding.")
+                    try:
+                        mtime = os.path.getmtime(job.path)
+                        self.submit_task("EMBED_LLM", job.path, priority=1, mtime=mtime)
+                        # logger.info("Queued a new task for summary embedding.")
+                    except OSError:
+                        logger.warning(f"Analysis saved, but could not queue embedding for {job.path} (File missing)")
                 else:
                     # FAILURE: Mark as FAILED (e.g. model was unloaded)
                     self.db.add_or_update_task(job.path, "LLM", "FAILED")
@@ -234,7 +239,7 @@ class Orchestrator:
                 logger.info(f"Starting summary embedding for: {Path(job.path).name}")
                 success = self.embed_service.run_embed_llm(job)
                 if success:
-                    self.db.mark_completed(job.path, "EMBED_LLM", "DONE")
+                    self.db.mark_completed(job.path, "EMBED_LLM")
                 else:
                     # FAILURE: Mark as FAILED (e.g. model was unloaded)
                     self.db.add_or_update_task(job.path, "EMBED_LLM", "FAILED")
