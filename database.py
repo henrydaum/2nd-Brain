@@ -154,10 +154,8 @@ class Database:
             self.conn.execute("DELETE FROM ocr_results WHERE path=?", (path,))
             self.conn.execute("DELETE FROM embeddings WHERE path=?", (path,))
             self.conn.execute("DELETE FROM llm_analysis WHERE path=?", (path,))
-            
             # 2. Clear Search Index (The triggers might handle this, but better safe than sorry)
             self.conn.execute("DELETE FROM search_index WHERE path=?", (path,))
-            
             # 3. Clear the Task itself
             self.conn.execute("DELETE FROM tasks WHERE path=?", (path,))
             self.conn.commit()
@@ -393,6 +391,13 @@ class Database:
                 UPDATE tasks SET status='PENDING' 
                 WHERE task_type='LLM' AND status='DONE' 
                 AND path NOT IN (SELECT path FROM llm_analysis)
+            """)
+
+            # Embed LLM Zombies
+            self.conn.execute("""
+                UPDATE tasks SET status='PENDING' 
+                WHERE task_type='EMBED_LLM' AND status='DONE' 
+                AND path NOT IN (SELECT path FROM embeddings WHERE chunk_index < 0)
             """)
 
             self.conn.commit()
