@@ -52,9 +52,9 @@ class SearchFacts:
     from typing import List, Optional, Any, Dict
     query: str = ""
 
-    attachment_path: Optional[Path] = None
-    text_attachment: str = None
-    image_attachment: str = None
+    attachment_path: str = None
+    text_attachment: str = None  # Extracted text from attachment, if applicable
+    image_attachment: str = None  # Path to image attachment, if applicable
 
     image_search_results: List[Dict[str, Any]] = field(default_factory=list)
     text_search_results: List[Dict[str, Any]] = field(default_factory=list)
@@ -148,7 +148,10 @@ class LLMWorker(QThread):
 
         # Assemble the final prompt from SearchFacts.
         final_prompt = ""
-        final_prompt += f"USER'S SEARCH QUERY: '{self.searchfacts.query}'\n\n" if self.searchfacts.query else "no query\n\n"
+        if self.searchfacts.query:
+            final_prompt += f"USER'S SEARCH QUERY: '{self.searchfacts.query}'\n\n"
+        if self.searchfacts.attachment_path:
+            final_prompt += f"USER'S ATTACHMENT: [{self.searchfacts.attachment_path}] '{self.searchfacts.text_attachment if self.searchfacts.text_attachment else ""}'\n\n"  # Image attachments handled separately, within LLMClass
         final_prompt += "TEXT SEARCH RESULTS:\n"
         for i, r in enumerate(self.searchfacts.text_search_results[:top_n]):
             final_prompt += f"PATH: {r['path']} | SCORE: {r['score']:.2f} | CONTENT: {r['content']}\n\n"
@@ -169,7 +172,8 @@ class LLMWorker(QThread):
             # Iterate over the stream generator from your llmClass
             for chunk in self.llm.stream(
                 prompt=final_prompt, 
-                image_paths=image_paths, 
+                image_paths=image_paths,
+                attached_image_path=self.searchfacts.image_attachment, 
                 temperature=temperature
                 ):
                 if not self._is_running: 

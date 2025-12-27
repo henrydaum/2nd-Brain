@@ -86,14 +86,14 @@ def is_gibberish(text, min_len=25):
     Returns True if text is low quality/gibberish.
     """
     if not text or len(text) < min_len:
-        logger.warning(f"[Gibberish] Too short: {text}")
+        # logger.warning(f"[Gibberish] Too short: {text}")
         return True
     
     # 1. Whitespace check - Real text has word boundaries
     # Catches URLs, hashes, long identifiers (universal across Proto-Indo European languages - any who use spaces)
     space_ratio = text.count(' ') / len(text)
     if space_ratio < 0.05:  # Less than 5% spaces
-        logger.warning(f"[Gibberish] Too few spaces: {text}")
+        # logger.warning(f"[Gibberish] Too few spaces: {text}")
         return True
     
     # 2. Word repetition - Catches "aaaaa aaaaa" or "--- --- ---"
@@ -106,7 +106,7 @@ def is_gibberish(text, min_len=25):
         
         max_count = max(word_counts.values())
         if max_count / len(words) > 0.4:  # Same word >40% of text
-            logger.warning(f"[Gibberish] Too many word repetitions: {text}")
+            # logger.warning(f"[Gibberish] Too many word repetitions: {text}")
             return True
     
     # 3. Character repetition - Catches "aaaaaaa" or "………"
@@ -121,7 +121,7 @@ def is_gibberish(text, min_len=25):
             current_repeat = 1
     
     if max_char_repeat > 40:  # Same character repeated >40 times in a row
-        logger.warning(f"[Gibberish] Too many character repetitions: {text}")
+        # logger.warning(f"[Gibberish] Too many character repetitions: {text}")
         return True
     
     # 4. Compression ratio - Works across all languages and scripts!
@@ -132,11 +132,11 @@ def is_gibberish(text, min_len=25):
         ratio = len(compressed) / len(text)
         
         if ratio < 0.1:  # Too repetitive
-            logger.warning(f"[Gibberish] Compresses too well: {text}")
+            # logger.warning(f"[Gibberish] Compresses too well: {text}")
             return True
         
         if len(text) > 100 and ratio > 0.9:  # Too random
-            logger.warning(f"[Gibberish] Compresses too badly: {text}")
+            # logger.warning(f"[Gibberish] Compresses too badly: {text}")
             return True
     except:
         pass

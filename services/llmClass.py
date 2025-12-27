@@ -57,14 +57,24 @@ class BaseLLM:
             if img: img.close()
 
     @staticmethod
-    def _build_image_prompt(prompt: str, valid_file_names: list[str]) -> str:
+    def _build_image_prompt(prompt: str, valid_file_names: list[str], attached_image_path: str = None) -> str:
         """Helper to append image references to the text prompt."""
         if not valid_file_names:
             return prompt
             
         source_info = ""
-        for i, name in enumerate(valid_file_names, 1):
-            source_info += f"\n<Image {i}: {name}>"
+        i = 1
+        for name in valid_file_names:
+            if attached_image_path:
+                # Attached image goes last
+                if name == Path(attached_image_path).name and i == len(valid_file_names):
+                    source_info += f"\n<User Attached Image: {name}>"
+                else:
+                    source_info += f"\n<Image Result {i}: {name}>"
+                    i += 1
+            else:
+                source_info += f"\n<Image {i}: {name}>"
+                i += 1
             
         final_prompt = (
             f"{prompt}\n\n"
@@ -105,10 +115,13 @@ class LMStudioLLM(BaseLLM):
         self.loaded = False
         logger.info("LM Studio model unloaded.")
 
-    def prepare_chat(self, prompt: str, image_paths: list[str]):
+    def prepare_chat(self, prompt: str, image_paths: list[str], attached_image_path: str = None):
         """Helper to create a Chat object if images are provided."""
-        if not image_paths:
+        if not image_paths and not attached_image_path:
             return prompt, []
+
+        if attached_image_path:
+            image_paths.append(attached_image_path)
 
         import lmstudio as lms
         import tempfile
@@ -141,7 +154,7 @@ class LMStudioLLM(BaseLLM):
                 if tmp_path and os.path.exists(tmp_path):
                     os.remove(tmp_path)
 
-        final_prompt = self._build_image_prompt(prompt, valid_file_names)
+        final_prompt = self._build_image_prompt(prompt, valid_file_names, attached_image_path)
         
         chat = lms.Chat()
         chat.add_user_message(final_prompt, images=image_handles)
@@ -154,9 +167,9 @@ class LMStudioLLM(BaseLLM):
                     os.remove(f_path)
             except: pass
 
-    def invoke(self, prompt, image_paths=[], temperature=1.0):
+    def invoke(self, prompt, image_paths=[], attached_image_path=None, temperature=1.0):
         try:
-            chat_input, temp_files = self.prepare_chat(prompt, image_paths)
+            chat_input, temp_files = self.prepare_chat(prompt, image_paths, attached_image_path)
             response = self.model.respond(chat_input, config={"temperature": temperature})
             return response.content
         except Exception as e:
@@ -167,9 +180,9 @@ class LMStudioLLM(BaseLLM):
                 time.sleep(0.1)
                 self._cleanup_temp_files(temp_files)
     
-    def stream(self, prompt, image_paths=[], temperature=1.0):
+    def stream(self, prompt, image_paths=[], attached_image_path=None, temperature=1.0):
         try:
-            chat_input, temp_files = self.prepare_chat(prompt, image_paths)
+            chat_input, temp_files = self.prepare_chat(prompt, image_paths, attached_image_path)
             for fragment in self.model.respond_stream(chat_input, config={"temperature": temperature}):
                 yield fragment.content
         except Exception as e:
@@ -214,9 +227,12 @@ class OpenAILLM(BaseLLM):
         self.loaded = False
         logger.info("OpenAI model unloaded.")
 
-    def prepare_chat(self, prompt: str, image_paths: list[str]):
-        if not image_paths:
+    def prepare_chat(self, prompt: str, image_paths: list[str], attached_image_path: str = None):
+        if not image_paths and not attached_image_path:
             return [{"role": "user", "content": prompt}]
+
+        if attached_image_path:
+            image_paths.append(attached_image_path)
         
         import base64
         content_list = []
@@ -244,9 +260,9 @@ class OpenAILLM(BaseLLM):
         
         return [{"role": "user", "content": content_list}]
 
-    def invoke(self, prompt, image_paths=[], temperature=1.0):
+    def invoke(self, prompt, image_paths=[], attached_image_path=None, temperature=1.0):
         try:
-            messages = self.prepare_chat(prompt, image_paths)
+            messages = self.prepare_chat(prompt, image_paths, attached_image_path)
             response = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
@@ -256,9 +272,9 @@ class OpenAILLM(BaseLLM):
         except Exception as e:
             return f"OpenAI Invoke Error: {e}"
 
-    def stream(self, prompt, image_paths=[], temperature=1.0):
+    def stream(self, prompt, image_paths=[], attached_image_path=None, temperature=1.0):
         try:
-            messages = self.prepare_chat(prompt, image_paths)
+            messages = self.prepare_chat(prompt, image_paths, attached_image_path)
             stream = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,

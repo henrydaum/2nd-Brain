@@ -9,14 +9,18 @@ class OCRService:
 
     def run(self, job):
         if not self.model.loaded:
-            logger.warning("OCR Job attempted while model unloaded.")
+            logger.warning("✗ OCR Job attempted while model unloaded.")
             return False
 
         # logger.info(f"Scanning image: {job.path}")
 
         # 1. Run Model
-        text = self.model.process_image(job.path)
-        
+        try:
+            text = self.model.process_image(job.path)
+        except Exception as e:
+            logger.error(f"✗ OCR failed for {job.path}: {e}")
+            return False
+
         # 2. Save Result
         if text and text.strip():
             self.db.save_ocr_result(job.path, text, self.model.model_name)
@@ -25,6 +29,6 @@ class OCRService:
             # FIX: We save an empty result so the DB knows we checked this file.
             # We do NOT mark the task as DONE here; the Orchestrator handles that.
             self.db.save_ocr_result(job.path, " ", self.model.model_name)
-            logger.info(f"OCR found no text in {job.path}")
+            logger.info(f"✓ OCR found no text in {job.path}")
 
         return True

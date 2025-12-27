@@ -54,7 +54,7 @@ class LLMService:
                     context_limit = 20000
                     full_text = get_text_content(Path(job.path), drive_service, self.config)
                     if not full_text:
-                        logger.warning("LLM run - no valid text extracted.")
+                        logger.warning(f"✗ No valid text extracted from {path_obj.name}.")
                         return False
                 
                     # Get head + tail if too long
@@ -68,7 +68,7 @@ class LLMService:
                         text = full_text
 
                 except Exception as e:
-                    logger.error(f"✗ Failed to extract text for LLM {path_obj.name}: {e}")
+                    logger.error(f"✗ Failed to get text for LLM from {path_obj.name}: {e}")
                     return False
 
                 prompt = (f"Analyze this document for a search engine index by generating a direct, factual description of the context, followed immediately by a comprehensive list of relevant search keywords, synonyms, and entities. Keep the description dry and robotic, avoiding flowery language or meta-phrases like 'this image depicts,' and instead focus strictly on visible objects, actions, and specific data. Output only the plain text result consisting of the factual description followed by the comma-separated keyword list.\n\n"
@@ -81,8 +81,7 @@ class LLMService:
                 return False
 
             # --- INVOKE AND SAVE ---
-            # Invoke LLM
-            response = self.model.invoke(prompt, image_paths=image_paths, temperature=0.3)
+            response = self.model.invoke(prompt, image_paths=image_paths, attached_image_path=None, temperature=0.3)
             if ("LM Studio Invoke Error" in response) or ("OpenAI Invoke Error" in response):
                 logger.error(f"✗ LLM invocation error for {path_obj.name}")
                 return False

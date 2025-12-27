@@ -91,7 +91,7 @@ class SearchEngine:
                 return []
 
             # 4. Create the 2D Matrix
-            # We use vstack to turn a [list of 1D arrays] into a [2D Matrix]
+            # Use vstack to turn a [list of 1D arrays] into a [2D Matrix]
             # Shape becomes (Num_Docs, Embedding_Dim)
             emb_matrix = np.vstack(valid_embeddings)
 
@@ -150,6 +150,7 @@ class SearchEngine:
                         with Image.open(query).convert("RGB") as img:
                             # Use CLIP to embed image directly
                             image_vec = self.models['image'].encode(img)
+                            logger.info(f"Embedded image query {query} for search.")
                     except Exception as e:
                         logger.error(f"Failed to embed image {query}: {e}")
 
@@ -243,7 +244,7 @@ class SearchEngine:
                     # Doc already found in a previous stream (e.g. was in Lexical, now in Semantic)
                     stored_doc = merged_docs[media_type][path]
                     
-                    # A. Mark as Hybrid
+                    # A. Mark as Hybrid if applicable
                     if stored_doc['result_type'] != item['result_type']:
                         stored_doc['result_type'] = "Hybrid"
                     
