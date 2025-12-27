@@ -93,6 +93,15 @@ class FileWatcherService:
         
         for watch_dir in valid_dirs:
             for root, dirs, files in os.walk(watch_dir):
+                
+                # 1. Remove explicitly blacklisted folders
+                ignored = self.orchestrator.config.get("ignored_folders", [])
+                dirs[:] = [d for d in dirs if d not in ignored]
+
+                # 2. Remove hidden folders (if enabled)
+                if self.orchestrator.config.get("skip_hidden_folders", True):
+                    dirs[:] = [d for d in dirs if not d.startswith('.')]
+
                 for name in files:
                     path = str(Path(os.path.join(root, name)))
                     
@@ -151,7 +160,16 @@ class DebouncedEventHandler(FileSystemEventHandler):
             # If a folder is pasted or moved here, we must walk it to find the files inside.
             if os.path.isdir(path):
                 logger.info(f"[Sync] scanning directory: {Path(path).name}")
-                for root, _, files in os.walk(path):
+                for root, dirs, files in os.walk(path):
+
+                    # 1. Remove explicitly blacklisted folders
+                    ignored = self.config.get("ignored_folders", [])
+                    dirs[:] = [d for d in dirs if d not in ignored]
+
+                    # 2. Remove hidden folders (if enabled)
+                    if self.config.get("skip_hidden_folders", True):
+                        dirs[:] = [d for d in dirs if not d.startswith('.')]
+
                     for name in files:
                         file_path = str(Path(os.path.join(root, name)))
                         # Only queue if it's a valid file type (e.g., .txt, .png)

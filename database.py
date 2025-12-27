@@ -255,10 +255,30 @@ class Database:
             self.conn.commit()
 
     def save_embeddings(self, data):
-        # data = [(index, text, embedding_bytes, model_name), ...]
         with self.lock:
+            # 1. Identify paths and the TYPE of update (Content vs. Summary)
+            paths = set(row[0] for row in data)
+            indices = [row[1] for row in data]
+            # If saving LLM responses (negative index), only wipe old LLM Embeddings.
+            # If saving Content (positive index), only wipe old Chunks.
+            is_llm_update = any(idx < 0 for idx in indices)
+            if paths:
+                placeholders = ','.join(['?'] * len(paths))
+                if is_llm_update:
+                    # Only delete old LLM summaries (chunk_index < 0)
+                    self.conn.execute(
+                        f"DELETE FROM embeddings WHERE chunk_index < 0 AND path IN ({placeholders})", 
+                        list(paths)
+                    )
+                else:
+                    # Only delete old Content chunks (chunk_index >= 0)
+                    self.conn.execute(
+                        f"DELETE FROM embeddings WHERE chunk_index >= 0 AND path IN ({placeholders})", 
+                        list(paths)
+                    )
+            # 2. Insert the new data
             self.conn.executemany("""
-                INSERT OR REPLACE INTO embeddings (path, chunk_index, text_content, embedding, model_name)
+                INSERT INTO embeddings (path, chunk_index, text_content, embedding, model_name)
                 VALUES (?, ?, ?, ?, ?)
             """, data)
             self.conn.commit()
