@@ -82,7 +82,7 @@ class EmbedService:
 
         # 1. Run Text Model
         try:
-            logger.info(f"Embedding {len(text_inputs)} text chunks...")
+            # logger.info(f"Embedding {len(text_inputs)} text chunks...")
             embeddings_numpy = self.text_model.encode(text_inputs, batch_size=self.config.get("batch_size", 11))
         except Exception as e:
             logger.error(f"✗ Text embedding batch failed: {e}")

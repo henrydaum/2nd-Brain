@@ -762,7 +762,7 @@ class MainWindow(QMainWindow):
         # A. Model Toggles
         self.btn_ocr_toggle = self.add_live_setting_row("OCR Engine", "Load/Unload Windows OCR", 
                                   lambda: self.toggle_model('ocr'), color=OUTLINE)
-        self.btn_embed_toggle = self.add_live_setting_row("Embeddings", "Load/Unload Embedding Models", 
+        self.btn_embed_toggle = self.add_live_setting_row("Embeddings", "Load/Unload Embedding Models, enables semantic search", 
                                   lambda: self.toggle_model('embed'), color=OUTLINE)
         self.btn_llm_toggle = self.add_live_setting_row("Local LLM", "Load/Unload Chat Model, enables AI Insights",
                                   lambda: self.toggle_model('llm'), color=OUTLINE)

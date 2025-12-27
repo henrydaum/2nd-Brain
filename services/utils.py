@@ -86,12 +86,14 @@ def is_gibberish(text, min_len=25):
     Returns True if text is low quality/gibberish.
     """
     if not text or len(text) < min_len:
+        logger.warning(f"[Gibberish] Too short: {text}")
         return True
     
     # 1. Whitespace check - Real text has word boundaries
     # Catches URLs, hashes, long identifiers (universal across Proto-Indo European languages - any who use spaces)
     space_ratio = text.count(' ') / len(text)
     if space_ratio < 0.05:  # Less than 5% spaces
+        logger.warning(f"[Gibberish] Too few spaces: {text}")
         return True
     
     # 2. Word repetition - Catches "aaaaa aaaaa" or "--- --- ---"
@@ -104,6 +106,7 @@ def is_gibberish(text, min_len=25):
         
         max_count = max(word_counts.values())
         if max_count / len(words) > 0.4:  # Same word >40% of text
+            logger.warning(f"[Gibberish] Too many word repetitions: {text}")
             return True
     
     # 3. Character repetition - Catches "aaaaaaa" or "………"
@@ -117,7 +120,8 @@ def is_gibberish(text, min_len=25):
         else:
             current_repeat = 1
     
-    if max_char_repeat > 10:  # Same character repeated >10 times
+    if max_char_repeat > 40:  # Same character repeated >40 times in a row
+        logger.warning(f"[Gibberish] Too many character repetitions: {text}")
         return True
     
     # 4. Compression ratio - Works across all languages and scripts!
@@ -128,9 +132,11 @@ def is_gibberish(text, min_len=25):
         ratio = len(compressed) / len(text)
         
         if ratio < 0.1:  # Too repetitive
+            logger.warning(f"[Gibberish] Compresses too well: {text}")
             return True
         
         if len(text) > 100 and ratio > 0.9:  # Too random
+            logger.warning(f"[Gibberish] Compresses too badly: {text}")
             return True
     except:
         pass
@@ -152,7 +158,7 @@ def process_text_file(file_path: pathlib.Path, drive_service, config, text_split
         
         # 5. Filter (Prefix removed)
         final_chunks = []
-        gibberish_counter = 0
+        gibberish_chunks = []
         
         for i, chunk in enumerate(chunks):
             chunk = chunk.lstrip('. ')
@@ -161,10 +167,10 @@ def process_text_file(file_path: pathlib.Path, drive_service, config, text_split
                 # The DB Trigger handles the filename association for search.
                 final_chunks.append((i, chunk))
             else:
-                gibberish_counter += 1
+                gibberish_chunks.append((chunk))
         
-        if gibberish_counter > 0:
-            logger.info(f"Removed {gibberish_counter} gibberish chunks from {file_path.name}")
+        if len(gibberish_chunks) > 0:
+            logger.info(f"Removed {len(gibberish_chunks)} gibberish chunks from {file_path.name}")
         return final_chunks
     except Exception as e:
         logger.error(f"Error processing file - {file_path.name}: {e}")
