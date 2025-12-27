@@ -132,7 +132,6 @@ class DebouncedEventHandler(FileSystemEventHandler):
         with self.lock:
             if path in self.pending_timers:
                 self.pending_timers[path].cancel()
-            # Triggers just one call for multiple rapid events in a time interval
             timer = threading.Timer(self.debounce_interval, self._submit_to_orchestrator, [path, task_type])
             self.pending_timers[path] = timer
             timer.start()
@@ -140,45 +139,69 @@ class DebouncedEventHandler(FileSystemEventHandler):
     def _submit_to_orchestrator(self, path, task_type):
         with self.lock:
             if path in self.pending_timers: del self.pending_timers[path]
-            if not os.path.exists(path) and task_type != "DELETE": return
+            
+            # --- 1. HANDLE DELETIONS (Fail-safe) ---
+            if task_type == "DELETE":
+                self._recursive_delete(path)
+                return
 
-            # This is to get around an issue where viewing an image triggers a modify event:
-            if task_type != "DELETE":
+            if not os.path.exists(path): return
+
+            # --- 2. HANDLE FOLDERS (The "Suitcase" Logic) ---
+            # If a folder is pasted or moved here, we must walk it to find the files inside.
+            if os.path.isdir(path):
+                logger.info(f"[Sync] scanning directory: {Path(path).name}")
+                for root, _, files in os.walk(path):
+                    for name in files:
+                        file_path = str(Path(os.path.join(root, name)))
+                        # Only queue if it's a valid file type (e.g., .txt, .png)
+                        if self.service.is_valid_file(file_path):
+                            mtime = os.path.getmtime(file_path)
+                            self.service._queue_all_tasks(file_path, mtime)
+                return
+
+            # --- 3. HANDLE SINGLE FILES ---
+            # If it's not a folder, we check if it's a file we care about.
+            if self.service.is_valid_file(path):
                 try:
                     current_mtime = os.path.getmtime(path)
                     last_mtime = self.service._known_mtimes.get(path)
 
-                    # If timestamp hasn't changed (threshold 0.1s), it's a false alarm (just a read event)
+                    # False alarm check (timestamp hasn't changed enough)
                     if last_mtime and abs(current_mtime - last_mtime) < 0.1:
-                        # This happens too often to say every time
-                        # logger.info(f"[Watcher] Event false alarm: {task_type} -> {Path(path).name}")
                         return 
-                    # Update cache
+                    
                     self.service._known_mtimes[path] = current_mtime
+                    logger.info(f"[Sync] Event stable: {task_type} -> {Path(path).name}")
+                    self.service._queue_all_tasks(path, current_mtime)
                 except OSError:
-                    return
+                    pass
 
-            logger.info(f"[Sync] Event stable: {task_type} -> {Path(path).name}")
-            
-            if task_type == "DELETE":
-                self.orchestrator.submit_task("DELETE", path, priority=1)
-            else:
-                try:
-                    mtime = os.path.getmtime(path)
-                    # Use the same helper as initial scan!
-                    self.service._queue_all_tasks(path, mtime)
-                except OSError:
-                    pass 
+    def _recursive_delete(self, path):
+        """Helper to remove a file OR an entire folder from the DB."""
+        db_state = self.orchestrator.db.get_all_file_states()
+        deleted_path = str(Path(path))
+        
+        for db_path in db_state:
+            # Matches exact file OR any file starting with this folder path
+            if db_path == deleted_path or db_path.startswith(deleted_path + os.sep):
+                self.orchestrator.submit_task("DELETE", db_path, priority=1)
 
-    # Event wrappers (Same as before)
+    # --- EVENT WRAPPERS ---
+    # CRITICAL FIX: Removed the "is_valid_file" check at the door.
+    # We let everything through to the debouncer so it can decide if it's a folder or file.
+
     def on_modified(self, event):
-        if not self.service.is_valid_file(event.src_path): return
         self._debounce_task(event.src_path, "MODIFIED")
+
     def on_created(self, event):
-        if not self.service.is_valid_file(event.src_path): return
         self._debounce_task(event.src_path, "CREATED")
+
     def on_moved(self, event):
-        if not self.service.is_valid_file(event.dest_path): return
+        # Handle both the source (delete) and destination (create)
+        self._recursive_delete(event.src_path)
         self._debounce_task(event.dest_path, "MODIFIED")
+
     def on_deleted(self, event):
-        self.orchestrator.submit_task("DELETE", event.src_path, priority=1)
+        # We bypass debounce for deletes to ensure they happen fast
+        self._recursive_delete(event.src_path)
