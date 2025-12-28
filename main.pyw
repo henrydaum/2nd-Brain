@@ -12,6 +12,7 @@ from orchestrator import Orchestrator
 from watcher import FileWatcherService
 from gui import MainWindow
 from search import SearchEngine
+from config import Config
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -22,55 +23,6 @@ logger = logging.getLogger("Main")
 BASE_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = Path(os.getenv('LOCALAPPDATA')) / "2nd Brain"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-def load_config(file_path):
-    """Loads configuration from a JSON file, creating a default one if missing."""
-    
-    # 1. Define your default settings
-    DEFAULT_CONFIG = {
-        "sync_directories": [
-            "Z:\\My Drive", 
-            str(DATA_DIR / "Screenshots")
-        ],
-        "batch_size": 16,
-        "chunk_size": 1024,
-        "chunk_overlap": 64,
-        "flush_timeout": 5.0,
-        "max_workers": 6,
-        "ocr_backend": "Windows",
-        "embed_backend": "Sentence Transformers",
-        "text_model_name": "BAAI/bge-small-en-v1.5",
-        "image_model_name": "clip-ViT-B-32",
-        "llm_backend": "LM Studio",
-        "lms_model_name": "gemma-3-4b-it@q4_k_s",
-        "openai_model_name": "gpt-4.1",
-        "use_drive": True,
-        "num_results": 30,
-        "text_extensions": [".txt", ".md", ".pdf", ".docx", ".gdoc"],
-        "image_extensions": [".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".heif", ".tif", ".tiff", ".bmp", ".ico"],
-        "use_cuda": True,
-        "screenshot_interval": 15,
-        "screenshot_folder": "Screenshots",
-        "delete_screenshots_after": 9
-    }
-
-    # 2. Check if file exists
-    if not os.path.exists(file_path):
-        print(f"Config file not found. Creating default at: {file_path}")
-        try:
-            with open(file_path, 'w') as config_file:
-                json.dump(DEFAULT_CONFIG, config_file, indent=4)
-        except OSError as e:
-            print(f"Error creating config file: {e}")
-            return DEFAULT_CONFIG # Fallback to using defaults in memory
-
-    # 3. Load the file (now guaranteed to exist)
-    try:
-        with open(file_path, 'r') as config_file:
-            return json.load(config_file)
-    except json.JSONDecodeError:
-        print(f"Error: {file_path} is corrupted. Loading defaults.")
-        return DEFAULT_CONFIG
 
 def initialize_models(config):
     models = {}
@@ -115,7 +67,7 @@ def main():
     app.setQuitOnLastWindowClosed(False)
 
     # 2. Configuration & Backend
-    config = load_config(DATA_DIR / "config.json")
+    config = Config(DATA_DIR)
     db_path = Path(DATA_DIR / "Database/2nd_brain.db")
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
