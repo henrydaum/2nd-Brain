@@ -9,6 +9,7 @@ import json
 import ast
 import urllib.parse
 import re
+import markdown
 from collections import deque
 # Internal
 from guiWorkers import SearchWorker, StatsWorker, ModelToggleWorker, DatabaseActionWorker, LLMWorker, SearchFacts
@@ -20,10 +21,9 @@ from PySide6.QtWidgets import (
     QListWidget, QListWidgetItem, QSystemTrayIcon, QMenu, QHeaderView,
     QLabel, QFrame, QAbstractItemView, QTabWidget, QStatusBar, QLineEdit, QScrollArea, QDialog, QTextBrowser, QFileDialog, QCheckBox
 )
-from PySide6.QtCore import Qt, QSize, Signal, Slot, QEvent, QUrl
-from PySide6.QtGui import QIcon, QPixmap, QFont, QColor, QBrush, QAction, QImage, QTextCursor, QDesktopServices
+from PySide6.QtCore import Qt, QSize, Signal, Slot, QEvent
+from PySide6.QtGui import QIcon, QPixmap, QFont, QColor, QBrush, QAction, QImage, QDesktopServices
 import qtawesome as qta
-import markdown
 
 logger = logging.getLogger("GUI")
 

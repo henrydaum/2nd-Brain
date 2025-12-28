@@ -42,7 +42,7 @@ class LLMService:
                     return False
 
                 image_paths = [str(job.path)]
-                prompt = (f"Analyze this image for a search engine index by generating a direct, factual description of the context, followed immediately by a comprehensive list of relevant search keywords, synonyms, and entities. Keep the description dry and robotic, avoiding flowery language or meta-phrases like 'this image depicts,' and instead focus strictly on visible objects, actions, and specific data. Output only the plain text result consisting of the factual description followed by the comma-separated keyword list.\n\n"
+                prompt = (f"Analyze this image for a search engine index by generating a direct, factual description of the context, followed immediately by a comprehensive list of relevant search keywords, synonyms, and entities. Keep the description dry and robotic, avoiding flowery language or meta-phrases like 'this image depicts,' and instead focus strictly on visible objects, actions, and specific data. Output only the plain text result consisting of the factual description followed by the comma-separated keyword list. Make your response 250 words or less.\n\n"
                 f"Filename: {path_obj.name}"
                 )
             
@@ -71,7 +71,7 @@ class LLMService:
                     logger.error(f"✗ Failed to get text for LLM from {path_obj.name}: {e}")
                     return False
 
-                prompt = (f"Analyze this document for a search engine index by generating a direct, factual description of the context, followed immediately by a comprehensive list of relevant search keywords, synonyms, and entities. Keep the description dry and robotic, avoiding flowery language or meta-phrases like 'this image depicts,' and instead focus strictly on visible objects, actions, and specific data. Output only the plain text result consisting of the factual description followed by the comma-separated keyword list.\n\n"
+                prompt = (f"Analyze this document for a search engine index by generating a direct, factual description of the context, followed immediately by a comprehensive list of relevant search keywords, synonyms, and entities. Keep the description dry and robotic, avoiding flowery language or meta-phrases like 'this image depicts,' and instead focus strictly on visible objects, actions, and specific data. Output only the plain text result consisting of the factual description followed by the comma-separated keyword list. Make your response 250 words or less.\n\n"
                 f"Filename: {path_obj.name}. Content:"
                 f"{text}" 
                 )

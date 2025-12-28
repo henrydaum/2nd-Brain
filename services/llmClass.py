@@ -248,7 +248,7 @@ class OpenAILLM(BaseLLM):
             try:
                 base64_image = base64.b64encode(image_bytes).decode("utf-8")
                 input_images.append({
-                    "type": "input_image",
+                    "type": "image_url",
                     "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
                 })
                 valid_file_names.append(os.path.basename(path))
