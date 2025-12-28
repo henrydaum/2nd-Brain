@@ -185,6 +185,7 @@ class SearchEngine:
                         source = res.get('source', '').upper()
                         if source not in ["EMBED", "LLM", "OCR"]:
                             logger.info(f"Unknown source '{source}' for path {path}, skipping source filter.")
+                            continue
                         if not source_filter[source]:
                             continue
 

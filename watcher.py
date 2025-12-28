@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 import time
-import time
 import logging
 import threading
 # 3rd Party
@@ -93,7 +92,7 @@ class FileWatcherService:
         
         for watch_dir in valid_dirs:
             for root, dirs, files in os.walk(watch_dir):
-                
+
                 # 1. Remove explicitly blacklisted folders
                 ignored = self.orchestrator.config.get("ignored_folders", [])
                 dirs[:] = [d for d in dirs if d not in ignored]
