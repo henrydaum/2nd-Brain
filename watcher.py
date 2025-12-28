@@ -89,8 +89,19 @@ class FileWatcherService:
         """Shotgun approach: If file is modified, queue ALL tasks."""
         db_state = self.orchestrator.db.get_all_file_states()  # From the SQL database
         disk_files = set()
+
+        ignored = self.orchestrator.config.get("ignored_folders", [])
+        skip_hidden = self.orchestrator.config.get("skip_hidden_folders", True)
         
         for watch_dir in valid_dirs:
+            base = os.path.basename(watch_dir)
+            if base in ignored:
+                logger.warning(f"Sync directory has been ignored (see 'ignored_folders' in config.json): {watch_dir}")
+                continue
+            if skip_hidden and base.startswith('.'):
+                logger.warning(f"Sync directory is hidden and will be skipped (see 'skip_hidden_folders' in config.json): {watch_dir}")
+                continue
+
             for root, dirs, files in os.walk(watch_dir):
 
                 # 1. Remove explicitly blacklisted folders
@@ -158,6 +169,13 @@ class DebouncedEventHandler(FileSystemEventHandler):
             # --- 2. HANDLE FOLDERS (The "Suitcase" Logic) ---
             # If a folder is pasted or moved here, we must walk it to find the files inside.
             if os.path.isdir(path):
+                basename = os.path.basename(path)
+                ignored = self.config.get("ignored_folders", [])
+                if basename in ignored:
+                    return
+                if self.config.get("skip_hidden_folders", True) and basename.startswith('.'):
+                    return
+
                 logger.info(f"[Sync] scanning directory: {Path(path).name}")
                 for root, dirs, files in os.walk(path):
 
@@ -198,11 +216,17 @@ class DebouncedEventHandler(FileSystemEventHandler):
         """Helper to remove a file OR an entire folder from the DB."""
         db_state = self.orchestrator.db.get_all_file_states()
         deleted_path = str(Path(path))
-        
-        for db_path in db_state:
-            # Matches exact file OR any file starting with this folder path
-            if db_path == deleted_path or db_path.startswith(deleted_path + os.sep):
-                self.orchestrator.submit_task("DELETE", db_path, priority=1)
+
+        targets = [
+            db_path for db_path in db_state if db_path == deleted_path or db_path.startswith(deleted_path + os.sep)
+        ]
+
+        if not targets:
+            return
+
+        # Prefer bulk delete to avoid one-by-one overhead
+        self.orchestrator.db.remove_tasks_bulk(targets)
+        logger.info(f"✓ Bulk-deleted {len(targets)} paths under {deleted_path}")
 
     # --- EVENT WRAPPERS ---
     # CRITICAL FIX: Removed the "is_valid_file" check at the door.

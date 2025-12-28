@@ -148,6 +148,7 @@ class Database:
             self.conn.commit()
     
     def remove_task(self, path: str):
+        """No longer in use, but kept for completeness."""
         # Removes ALL traces of this file (cleanup) - all 5 tables
         with self.lock:
             # 1. Clear Service Data
@@ -158,6 +159,21 @@ class Database:
             self.conn.execute("DELETE FROM search_index WHERE path=?", (path,))
             # 3. Clear the Task itself
             self.conn.execute("DELETE FROM tasks WHERE path=?", (path,))
+            self.conn.commit()
+
+    def remove_tasks_bulk(self, paths: list[str], batch_size: int = 500):
+        """Delete all traces for many paths in as few transactions as possible."""
+        if not paths:
+            return
+        with self.lock:
+            for i in range(0, len(paths), batch_size):
+                batch = paths[i:i+batch_size]
+                placeholders = ",".join("?" * len(batch))
+                self.conn.execute(f"DELETE FROM ocr_results    WHERE path IN ({placeholders})", batch)
+                self.conn.execute(f"DELETE FROM embeddings     WHERE path IN ({placeholders})", batch)
+                self.conn.execute(f"DELETE FROM llm_analysis   WHERE path IN ({placeholders})", batch)
+                self.conn.execute(f"DELETE FROM search_index   WHERE path IN ({placeholders})", batch)
+                self.conn.execute(f"DELETE FROM tasks          WHERE path IN ({placeholders})", batch)
             self.conn.commit()
 
     def mark_completed(self, path: str, task_type: str):
