@@ -4,14 +4,6 @@ import logging
 import sys
 import json
 import threading
-# 3rd Party
-from PySide6.QtWidgets import QApplication
-# Local Imports
-from database import Database
-from orchestrator import Orchestrator
-from watcher import FileWatcherService
-from gui import MainWindow
-from search import SearchEngine
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -105,16 +97,13 @@ def initialize_models(config):
     # Done.
     return models
 
-def main():
-    logger.info("--- Starting Second Brain (PySide6) ---")
+def backend_setup():
+    # Local Imports
+    from database import Database
+    from orchestrator import Orchestrator
+    from watcher import FileWatcherService
+    from search import SearchEngine
     
-    # 1. Setup PySide6 Application
-    app = QApplication(sys.argv)
-    
-    # Prevent the app from quitting when the window is closed (Key for Tray apps!)
-    app.setQuitOnLastWindowClosed(False)
-
-    # 2. Configuration & Backend
     config = load_config(DATA_DIR / "config.json")
     db_path = Path(DATA_DIR / "Database/2nd_brain.db")
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -125,25 +114,37 @@ def main():
     watcher = FileWatcherService(orchestrator, config)
     search_engine = SearchEngine(db, models, config)
 
-    # 3. Launch GUI
-    # We pass 'models' directly so the GUI can toggle them
-    window = MainWindow(search_engine, orchestrator, models, config)
-    window.start() 
-
-    # 4. Start Background Services
     orch_thread = threading.Thread(target=orchestrator.start, daemon=True)
     orch_thread.start()
     watcher_thread = threading.Thread(target=watcher.start, daemon=True)
     watcher_thread.start()
+
+    return orchestrator, watcher, search_engine, models, config
+
+def main():
+    logger.info("--- Starting Second Brain (PySide6) ---")
+    from gui import MainWindow
+    from PySide6.QtWidgets import QApplication
+    
+    # 1. Setup PySide6 Application
+    app = QApplication(sys.argv)
+    
+    # Prevent the app from quitting when the window is closed (Key for Tray apps!)
+    app.setQuitOnLastWindowClosed(False)
+
+    # 3. Launch GUI
+    # We pass 'models' directly so the GUI can toggle them
+    window = MainWindow()
+    window.start()
 
     # 5. Run Event Loop
     exit_code = app.exec()
     
     # 6. Clean Shutdown
     logger.info("Shutdown sequence initiated...")
-    watcher.stop()
-    orchestrator.stop()
-    for key, model in models.items():
+    window.watcher.stop()
+    window.orchestrator.stop()
+    for key, model in window.models.items():
         model.unload()
     logger.info("Goodbye.")
     sys.exit(exit_code)

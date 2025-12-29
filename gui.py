@@ -14,6 +14,7 @@ from collections import deque
 # Internal
 from guiWorkers import SearchWorker, StatsWorker, ModelToggleWorker, DatabaseActionWorker, LLMWorker, SearchFacts
 from Parsers import get_drive_service
+from main import backend_setup
 # Qt
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -350,12 +351,14 @@ class MainWindow(QMainWindow):
     # Must define the log_signal in order for the log info page to update from other threads
     log_signal = Signal(str)
 
-    def __init__(self, search_engine, orchestrator, models, config):
+    def __init__(self):
         super().__init__()
-        self.search_engine = search_engine
-        self.orchestrator = orchestrator
-        self.models = models
-        self.config = config
+        # Critical structures:
+        self.search_engine = None
+        self.orchestrator = None
+        self.models = None
+        self.config = None
+
         self.workers = []
         self.attached_file_path = None
         self.folder_filter = None  # None means "Search Everything"
@@ -387,12 +390,6 @@ class MainWindow(QMainWindow):
         root_logger = logging.getLogger()
         root_logger.addHandler(self.log_handler)
         root_logger.setLevel(logging.INFO)
-        
-        # Start stats polling (every N seconds) for the status bar
-        if hasattr(self.search_engine, 'db'):
-            self.stats_thread = StatsWorker(self.search_engine.db)
-            self.stats_thread.stats_updated.connect(self.update_status_bar)
-            self.stats_thread.start()
 
     def setup_styles(self):
         """Many key elements of the application are styled here, but not all."""
@@ -705,110 +702,12 @@ class MainWindow(QMainWindow):
         self.results_tabs.addTab(self.rag_page, "AI Insights")
         # Add it to the main search page
         search_layout.addWidget(self.results_tabs, 1)
-        
+
     # SETTINGS PAGE
         self.page_settings = QWidget()
         # Use a VBox for the main page
-        settings_main_layout = QVBoxLayout(self.page_settings)
-        settings_main_layout.setContentsMargins(0, 0, 0, 0)
-
-        # Scroll Area (because of many config options)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet(f"""
-            /* 1. The Scroll Area Itself */
-            QScrollArea {{
-                background-color: {BG_DARK};
-                border: none;
-            }}
-            /* 2. The Content Widget inside the Scroll Area */
-            QScrollArea > QWidget > QWidget {{
-                background-color: {BG_DARK};
-            }}
-            /* 3. The Vertical Scrollbar */
-            QScrollBar:vertical {{
-                border: none;
-                background: {BG_DARK};
-                width: 14px;
-                margin: 0px;
-            }}
-            QScrollBar::handle:vertical {{
-                background-color: {BG_LIGHT};
-                min-height: 30px;
-                border-radius: 7px;
-                margin: 2px; /* Creates a nice padding around the handle */
-            }}
-            QScrollBar::handle:vertical:hover {{
-                background-color: {OUTLINE};
-            }}
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-                height: 0px;
-            }}
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
-                background: none;
-            }}
-        """)
-        
-        # Configure content inside the scroll area
-        scroll_content = QWidget()
-        self.settings_layout = QVBoxLayout(scroll_content)
-        self.settings_layout.setContentsMargins(40, 40, 40, 40)
-        self.settings_layout.setSpacing(10)
-        self.settings_layout.setAlignment(Qt.AlignTop)
-
-    # SETTINGS SECTION 1: LIVE CONTROLS (No Restart Required)
-        self.add_settings_header("Live Controls")
-
-        # A. Model Toggles
-        self.btn_ocr_toggle = self.add_live_setting_row("OCR Engine", "Load/Unload Windows OCR", 
-                                  lambda: self.toggle_model('ocr'), color=OUTLINE)
-        self.btn_embed_toggle = self.add_live_setting_row("Embeddings", "Load/Unload Embedding Models, enables semantic search", 
-                                  lambda: self.toggle_model('embed'), color=OUTLINE)
-        self.btn_llm_toggle = self.add_live_setting_row("Local LLM", "Load/Unload Chat Model, enables AI Insights",
-                                  lambda: self.toggle_model('llm'), color=OUTLINE)
-        self.btn_screenshotter_toggle = self.add_live_setting_row("Screen Capture", f"Start/Stop taking screenshots every {self.config.get('screenshot_interval', 'N')} seconds, deleted after {self.config.get('delete_screenshots_after', 'N')} days", 
-                                  lambda: self.toggle_model('screenshotter'), color=OUTLINE)
-
-        self.add_live_setting_row("Open Data Folder", "Manage all user data", 
-                                  lambda: os.startfile(DATA_DIR), color=OUTLINE)
-        # B. External Auth
-        self.add_live_setting_row("Google Drive", "Reauthorize connection", 
-                                  lambda: self.reauthorize_drive(), color=OUTLINE)
-        # C. Database Actions
-        self.add_live_setting_row("Retry Tasks", "Set all 'FAILED' tasks back to 'PENDING'", 
-                                  lambda: self.run_db_action('retry_failed'), color="#d5b462")
-        self.add_live_setting_row("Reset OCR Data", "Delete all OCR text & re-queue images", 
-                                  lambda: self.run_db_action('reset_service', ['OCR']), color="#e06c75")
-        self.add_live_setting_row("Reset Embeddings", "Delete all vectors & re-queue all files", 
-                                  lambda: self.run_db_action('reset_service', ['EMBED']), color="#e06c75")
-        self.add_live_setting_row("Reset LLM Data", "Delete AI analysis & re-queue all files", 
-                                  lambda: self.run_db_action('reset_service', ['LLM']), color="#e06c75")
-        self.settings_layout.addSpacing(30)  # Space between sections
-
-    # SETTINGS SECTION 2: CONFIGURATION (Restart Required)
-        self.add_settings_header("System Configuration (Restart Required)")
-        self.config_widgets = {} # To store inputs for saving
-        # Iterate over config keys to create rows
-        # Filter this list to hide internal keys!
-        ignored_keys = ['quality_weight'] 
-        for key, value in self.config.items():
-            if key not in ignored_keys:
-                self.add_config_row(key, value)
-
-        self.settings_layout.addSpacing(20)
-        
-        # Large Save Button
-        btn_save = QPushButton("Save Configuration")
-        btn_save.setFixedHeight(45)
-        btn_save.setStyleSheet(f"""
-            QPushButton {{ background-color: {BG_DARK}; color: {ACCENT_COLOR}; border-radius: 6px; border: 1px solid {ACCENT_COLOR}; font-weight: bold; }}
-            QPushButton:hover {{ background-color: {ACCENT_COLOR}; color: {BG_DARK}; }}
-        """)
-        btn_save.clicked.connect(self.save_config)
-        self.settings_layout.addWidget(btn_save)
-
-        scroll.setWidget(scroll_content)
-        settings_main_layout.addWidget(scroll)
+        self.settings_main_layout = QVBoxLayout(self.page_settings)
+        self.settings_main_layout.setContentsMargins(0, 0, 0, 0)
 
     # LOGGING PAGE
         self.page_logs = QWidget()
@@ -835,7 +734,6 @@ class MainWindow(QMainWindow):
 
     # final touches
         self.search_input.setFocus()
-        self.update_button_states()
 
     def adjust_search_input_height(self):
         content_height = int(self.search_input.document().size().height())
@@ -1304,11 +1202,17 @@ class MainWindow(QMainWindow):
     def update_tray_menu(self):
         """Updates the labels based on loaded state"""
         # Find current states
-        ocr_loaded = self.models['ocr'].loaded
-        embed_loaded = self.models['text'].loaded
-        llm_loaded = self.models.get('llm') and self.models['llm'].loaded
-        screenshotter_loaded = self.models.get('screenshotter') and self.models['screenshotter'].loaded
+        if self.models:
+            ocr_loaded = self.models['ocr'].loaded
+            embed_loaded = self.models['text'].loaded
+            llm_loaded = self.models['llm'].loaded
+            screenshotter_loaded = self.models['screenshotter'].loaded
         # Set the text accordingly for the 4 buttons
+        else:
+            ocr_loaded = False
+            embed_loaded = False
+            llm_loaded = False
+            screenshotter_loaded = False
         self.act_screenshot.setText("Stop Screen Capture" if screenshotter_loaded else "Start Screen Capture")
         self.act_ocr.setText("Unload OCR" if ocr_loaded else "Load OCR")
         self.act_embed.setText("Unload Embedders" if embed_loaded else "Load Embedders")
@@ -1350,9 +1254,138 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def start(self):
+        self.orchestrator, self.watcher, self.search_engine, self.models, self.config = backend_setup()
+        self.create_settings_page()
+        self.update_button_states()
         self.show()
+        # Start stats polling (every N seconds) for the status bar
+        if hasattr(self.search_engine, 'db'):
+            self.stats_thread = StatsWorker(self.search_engine.db)
+            self.stats_thread.stats_updated.connect(self.update_status_bar)
+            self.stats_thread.start()
+
+    def restart(self):
+        logger.info("RELOADING BACKEND === RELOADING BACKEND === RELOADING BACKEND")
+        self.watcher.stop()
+        self.orchestrator.stop()
+        for key, model in self.models.items():
+            model.unload()
+        # Clear existing widgets from the settings layout
+        while self.settings_main_layout.count():
+            item = self.settings_main_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self.stats_thread.stop()
+        self.orchestrator = None
+        self.watcher = None
+        self.search_engine = None
+        self.models = None
+        self.config = None
+        self.start()
 
     # --- CONFIG & DB LOGIC ---
+
+    def create_settings_page(self):
+        # Scroll Area (because of many config options)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet(f"""
+            /* 1. The Scroll Area Itself */
+            QScrollArea {{
+                background-color: {BG_DARK};
+                border: none;
+            }}
+            /* 2. The Content Widget inside the Scroll Area */
+            QScrollArea > QWidget > QWidget {{
+                background-color: {BG_DARK};
+            }}
+            /* 3. The Vertical Scrollbar */
+            QScrollBar:vertical {{
+                border: none;
+                background: {BG_DARK};
+                width: 14px;
+                margin: 0px;
+            }}
+            QScrollBar::handle:vertical {{
+                background-color: {BG_LIGHT};
+                min-height: 30px;
+                border-radius: 7px;
+                margin: 2px; /* Creates a nice padding around the handle */
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background-color: {OUTLINE};
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0px;
+            }}
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
+                background: none;
+            }}
+        """)
+        scroll_content = QWidget()
+        scroll.setWidget(scroll_content)
+        self.settings_main_layout.addWidget(scroll)
+               
+        # Configure content inside the scroll area
+        self.settings_layout = QVBoxLayout(scroll_content)
+        self.settings_layout.setContentsMargins(40, 40, 40, 40)
+        self.settings_layout.setSpacing(10)
+        self.settings_layout.setAlignment(Qt.AlignTop)
+
+    # SETTINGS SECTION 1: LIVE CONTROLS (No Restart Required)
+        self.add_settings_header("Live Controls")
+
+        # A. Model Toggles
+        self.btn_ocr_toggle = self.add_live_setting_row("OCR Engine", "Load/Unload Windows OCR", 
+                                  lambda: self.toggle_model('ocr'), color=OUTLINE)
+        self.btn_embed_toggle = self.add_live_setting_row("Embeddings", "Load/Unload Embedding Models, enables semantic search", 
+                                  lambda: self.toggle_model('embed'), color=OUTLINE)
+        self.btn_llm_toggle = self.add_live_setting_row("Local LLM", "Load/Unload Chat Model, enables AI Insights",
+                                  lambda: self.toggle_model('llm'), color=OUTLINE)
+        self.btn_screenshotter_toggle = self.add_live_setting_row("Screen Capture", f"Start/Stop taking screenshots every {self.config.get('screenshot_interval', 'N')} seconds, deleted after {self.config.get('delete_screenshots_after', 'N')} days", 
+                                  lambda: self.toggle_model('screenshotter'), color=OUTLINE)
+
+        self.add_live_setting_row("Open Data Folder", "Manage all user data", 
+                                  lambda: os.startfile(DATA_DIR), color=OUTLINE)
+        # B. External Auth
+        self.add_live_setting_row("Google Drive", "Reauthorize connection", 
+                                  lambda: self.reauthorize_drive(), color=OUTLINE)
+        # C. Database Actions
+        self.add_live_setting_row("Retry Tasks", "Set all 'FAILED' tasks back to 'PENDING'", 
+                                  lambda: self.run_db_action('retry_failed'), color="#d5b462")
+        self.add_live_setting_row("Reset OCR Data", "Delete all OCR text & re-queue images", 
+                                  lambda: self.run_db_action('reset_service', ['OCR']), color="#e06c75")
+        self.add_live_setting_row("Reset Embeddings", "Delete all vectors & re-queue all files", 
+                                  lambda: self.run_db_action('reset_service', ['EMBED']), color="#e06c75")
+        self.add_live_setting_row("Reset LLM Data", "Delete AI analysis & re-queue all files", 
+                                  lambda: self.run_db_action('reset_service', ['LLM']), color="#e06c75")
+        self.settings_layout.addSpacing(30)  # Space between sections
+
+    # SETTINGS SECTION 2: CONFIGURATION (Reload Required)
+        self.add_settings_header("System Configuration (Reload Required)")
+        self.config_widgets = {} # To store inputs for saving
+        # Iterate over config keys to create rows
+        # Filter this list to hide internal keys!
+        ignored_keys = ['quality_weight'] 
+        for key, value in self.config.items():
+            if key not in ignored_keys:
+                self.add_config_row(key, value)
+
+        self.settings_layout.addSpacing(20)
+        
+        # Large Save Button
+        btn_save = QPushButton("Save Configuration and Reload")
+        btn_save.setFixedHeight(45)
+        btn_save.setStyleSheet(f"""
+            QPushButton {{ background-color: {BG_DARK}; color: {ACCENT_COLOR}; border-radius: 6px; border: 1px solid {ACCENT_COLOR}; font-weight: bold; }}
+            QPushButton:hover {{ background-color: {ACCENT_COLOR}; color: {BG_DARK}; }}
+        """)
+        def save_and_restart():
+            self.save_config()
+            self.status_bar.showMessage("Restarting application...", 5000)
+            self.restart()
+        btn_save.clicked.connect(save_and_restart)
+        self.settings_layout.addWidget(btn_save)
 
     def save_config(self):
         """Reads values from UI inputs and writes to config.json"""        
