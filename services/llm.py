@@ -59,11 +59,11 @@ class LLMService:
                     
                     try:
                         import tiktoken
-                        context_limit = self.config.get('llm_context_length', 4096)
                         enc = tiktoken.get_encoding("cl100k_base")
+                        context_limit = self.config.get('llm_context_length', 4096)
                         tokens = enc.encode(full_text, disallowed_special=())
                         # context_limit is now treated as TOKENS, not characters
-                        text = enc.decode(tokens[:context_limit-250])  # Room for prompt
+                        text = enc.decode(tokens[:context_limit-512])  # Room for prompt + response
                     except Exception as e:
                         logger.error(f"✗ Tokenization error for {path_obj.name}: {e}")
                         text = full_text[:10000]
@@ -89,7 +89,7 @@ class LLMService:
                 return False
 
             cleaned_response = response.strip()
-            logger.info(f"✓ LLM response made for {path_obj.name}: {cleaned_response}")
+            logger.info(f"✓ LLM response made for {path_obj.name}: {cleaned_response[:50]}...")
             
             self.db.save_llm_result(job.path, cleaned_response, model_name)
                 

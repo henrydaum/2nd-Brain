@@ -152,33 +152,108 @@ class LLMWorker(QThread):
             self.finished.emit()
             return
 
-        temperature = self.config.get('temperature', 0.6)
-        top_n = self.config.get('top_n_llm', 5)
+        temperature = self.config.get('llm_temperature', 0.6)
+        safety_margin = 2048
+        context_length = self.config.get('llm_context_length', 4096) - safety_margin
+        image_token_cost = self.config.get('llm_image_token_cost', 256)
 
-        # Assemble the final prompt from SearchFacts.
-        final_prompt = ""
+        try:
+            import tiktoken
+            enc = tiktoken.get_encoding("cl100k_base")
+        except Exception as e:
+            logger.warning(f"Could not create tokenizer: {e}")
+            enc = None
+
+        def count_tokens(text):
+            try:
+                return len(enc.encode(text, disallowed_special=()))
+            except Exception as e:
+                return len(text) // 4  # Rough estimate
+        
+        # -- Header --
+        prompt_header = ""
         if self.searchfacts.query:
-            final_prompt += f"USER'S SEARCH QUERY: '{self.searchfacts.query}'\n\n"
+            prompt_header += f"USER'S SEARCH QUERY: '{self.searchfacts.query}'\n\n"
+        
+        # Handle Attachment Text
         if self.searchfacts.attachment_path:
-            final_prompt += f"USER'S ATTACHMENT: [{self.searchfacts.attachment_path}] '{self.searchfacts.text_attachment if self.searchfacts.text_attachment else ""}'\n\n"  # Image attachments handled separately, within LLMClass
-        final_prompt += "TEXT SEARCH RESULTS:\n"
-        for i, r in enumerate(self.searchfacts.text_search_results[:top_n]):
-            final_prompt += f"PATH: {r['path']} | SCORE: {r['score']:.2f} | CONTENT: {r['content']}\n\n"
-        final_prompt += "\n"
-        final_prompt += "IMAGE SEARCH RESULTS:\n"
-        for i, r in enumerate(self.searchfacts.image_search_results[:top_n]):
-            final_prompt += f"PATH: {r['path']} | SCORE: {r['score']:.2f} | CONTENT: {r['content']}\n\n"
-        final_prompt += "\n"
-        final_prompt += f"{self.config.get('system_prompt', '')}\n\n"
-        final_prompt += f"When you cite a search result, you MUST use Markdown link format: [filename.ext](full_file_path). Do this exactly.\n\n"
-        final_prompt += f"YOUR RESPONSE:\n"
+            att_text = self.searchfacts.text_attachment if self.searchfacts.text_attachment else ""
+            prompt_header += f"USER'S ATTACHMENT: [{self.searchfacts.attachment_path}] '{att_text}'\n\n"
 
-        image_paths = [r['path'] for r in self.searchfacts.image_search_results[:top_n]]
+        # -- Footer --
+        prompt_footer = "\n"
+        prompt_footer += f"{self.config.get('system_prompt', '')}\n\n"
+        prompt_footer += "When you cite a search result, you MUST use Markdown link format: [filename.ext](full_file_path). Do this exactly.\n\n"
+        prompt_footer += "YOUR RESPONSE:\n"
+
+        # -- Section Headers --
+        text_header = "TEXT SEARCH RESULTS:\n"
+        image_header = "\nIMAGE SEARCH RESULTS:\n"
+
+        # Calculate available tokens for results
+        current_tokens = count_tokens(prompt_header) + count_tokens(prompt_footer) + count_tokens(text_header) + count_tokens(image_header)
+
+        # Reserve tokens for image attachment if present
+        if self.searchfacts.image_attachment:
+            current_tokens += image_token_cost
+
+        # -- Results --      
+        # Combine both lists into one "Candidate" pool
+        candidates = []
+        for r in self.searchfacts.text_search_results:
+            candidates.append({'type': 'text', 'data': r})
+        for r in self.searchfacts.image_search_results:
+            candidates.append({'type': 'image', 'data': r})
+
+        # Sort all candidates by score (Descending) so the best results get packed first
+        # This fixes the issue of Text starving Images or vice versa
+        candidates.sort(key=lambda x: x['data'].get('score', 0), reverse=True)
+
+        final_text_content = ""
+        final_image_content = ""
+        image_paths = []
+
+        for cand in candidates:
+            r = cand['data']
+            # Format the item string just like in the final prompt
+            item_str = f"PATH: {r['path']} | SCORE: {r['score']:.3f} | CONTENT: {r['content']}\n\n"
+            
+            # Calculate cost for this specific item
+            item_cost = count_tokens(item_str)
+            if cand['type'] == 'image':
+                item_cost += image_token_cost
+
+            # Check if it fits
+            if current_tokens + item_cost <= context_length:
+                current_tokens += item_cost
+                
+                if cand['type'] == 'text':
+                    final_text_content += item_str
+                else:
+                    final_image_content += item_str
+                    image_paths.append(r['path'])
+            else:
+                # If the budget is full, stop adding. 
+                # (You could continue to find smaller items, but strict score cutoff is usually better for relevance)
+                break
+
+        # -- FINAL PROMPT ASSEMBLY AND INVOCATION --
+        final_prompt = (
+            prompt_header +
+            text_header +
+            final_text_content +
+            image_header +
+            final_image_content +
+            prompt_footer
+        )
+
+        logger.info(f"Final prompt: {final_prompt}")
     
         # Run the LLM with the final prompt
-        logger.info(f"Starting LLM response; prompt length: {len(final_prompt)} characters")
+        logger.info(f"Starting LLM response; prompt length: {count_tokens(final_prompt) + (len(image_paths)*image_token_cost)} tokens")
         try:
             # Iterate over the stream generator from your llmClass
+            final_response = ""
             for chunk in self.llm.stream(
                 prompt=final_prompt, 
                 image_paths=image_paths,
@@ -189,7 +264,8 @@ class LLMWorker(QThread):
                     break
                 # Emit the chunk to the main thread
                 self.chunk_ready.emit(chunk)
-            logger.info(f"LLM response completed; total length: {len(final_prompt)} characters")
+                final_response += chunk
+            logger.info(f"LLM response completed; total length: {count_tokens(final_response)} tokens")
         except Exception as e:
             self.chunk_ready.emit(f"\nLLM Worker error during generation: {e}")
         finally:
