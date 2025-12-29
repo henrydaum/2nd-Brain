@@ -85,10 +85,11 @@ def initialize_models(config):
     elif config['llm_backend'] == "OpenAI":
         import keyring
         api_key = keyring.get_password("SecondBrain", "OPENAI_API_KEY")
-        logger.info("Got OpenAI API Key from keyring.")
         if not api_key:
             api_key = os.environ.get("OPENAI_API_KEY")
             logger.info("Got OpenAI API Key from environmental variable.")
+        else:
+            logger.info("Got OpenAI API Key from keyring.")
         models['llm'] = OpenAILLM(config['openai_model_name'], api_key)
     # Screenshotter
     logger.info("Setting up Screenshotter")
@@ -103,7 +104,7 @@ def backend_setup():
     from orchestrator import Orchestrator
     from watcher import FileWatcherService
     from search import SearchEngine
-    
+
     config = load_config(DATA_DIR / "config.json")
     db_path = Path(DATA_DIR / "Database/2nd_brain.db")
     db_path.parent.mkdir(parents=True, exist_ok=True)

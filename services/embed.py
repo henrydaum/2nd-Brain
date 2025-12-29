@@ -7,7 +7,7 @@ import io
 from PIL import Image
 import numpy as np
 # Internal
-from services.utils import process_text_file, is_gibberish, RecursiveCharacterSplitter
+from services.utils import process_text_file, is_gibberish, RecursiveTokenSplitter
 from Parsers import get_drive_service
 
 logger = logging.getLogger("EmbedService")
@@ -21,7 +21,7 @@ class EmbedService:
         # Initialize Splitter (using config values)
         chunk_size = config.get('chunk_size', 1024)
         chunk_overlap = config.get('chunk_overlap', 64)
-        self.text_splitter = RecursiveCharacterSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        self.text_splitter = RecursiveTokenSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 
     def run_batch(self, jobs, batch_type):
         """

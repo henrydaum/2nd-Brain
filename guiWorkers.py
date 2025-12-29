@@ -88,7 +88,16 @@ class SearchWorker(QThread):
                     from services.utils import get_text_content, get_drive_service
                     drive_service = get_drive_service(self.search_engine.config)
                     text = get_text_content(Path(self.searchfacts.attachment_path), drive_service, self.search_engine.config)
-                    text_chunk = text[:self.search_engine.config.get('chunk_size', 1024)]  # Cut off at chunk size
+                    chunk_size = self.search_engine.config.get('chunk_size', 1024)
+                    try:
+                        import tiktoken
+                        enc = tiktoken.get_encoding("cl100k_base")
+                        tokens = enc.encode(text, disallowed_special=())
+                        # chunk_size is now treated as TOKENS, not characters
+                        text_chunk = enc.decode(tokens[:chunk_size])
+                    except Exception as e:
+                        logger.error(f"Error tokenizing attachment text: {e}")
+                        text_chunk = text[:chunk_size*4]  # Fallback to character-based truncation
                     logger.info(f"Attachment text extracted: {text_chunk}...")
                     self.searchfacts.text_attachment = text_chunk
                 except Exception as e:

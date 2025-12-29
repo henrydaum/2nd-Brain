@@ -25,56 +25,103 @@ from Parsers import _EXTENSION_MAPPING, file_handler, parse_gdoc
 logger = logging.getLogger("Utils")
 
 # --- TEXT SPLITTER ---
-class RecursiveCharacterSplitter:
+
+class RecursiveTokenSplitter:
     def __init__(self, chunk_size=500, chunk_overlap=50):
-        # The logic uses character count, not token count, which is simpler and fine for the current scope.
+        import tiktoken
+        self.encoder = tiktoken.get_encoding("cl100k_base")
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
+        # Regex is safer for separators to avoid edge cases with consecutive splits
         self.separators = ["\n\n", "\n", ".", "?", "!", " ", ""]
 
-    def _split_text(self, text, separators):
+    def _token_len(self, text):
+        return len(self.encoder.encode(text, disallowed_special=()))
+
+    def split_text(self, text):
         final_chunks = []
-        separator = separators[-1]
-        new_separators = []
-        for i, sep in enumerate(separators):
-            if sep == "": separator = ""; break
-            if sep in text:
-                separator = sep; new_separators = separators[i + 1:]; break
+        if not text:
+            return final_chunks
         
-        splits = text.split(separator) if separator else list(text)
+        # 1. Break text into the smallest semantic units possible (atomic segments)
+        atomic_segments = self._recursive_split(text, self.separators)
         
-        good_splits = []
-        current_split = ""
+        # 2. Merge these small segments into chunks of the correct size
+        current_chunk = []
+        current_len = 0
         
-        for split in splits:
-            if not split.strip(): continue
-
-            # Apply overlap logic (simple version)
-            segment = split.strip()
+        for segment in atomic_segments:
+            seg_len = self._token_len(segment)
             
-            # Combine if possible
-            if current_split and len(current_split) + len(separator) + len(segment) <= self.chunk_size:
-                current_split += separator + segment
-            else:
-                # If current_split is too long, or we are starting:
-                if current_split:
-                    good_splits.append(current_split)
-                current_split = segment
+            # If a single segment is massive (larger than chunk_size) even after recursion,
+            # we accept it as is (or you could force-cut it, but usually bad for semantics).
+            if seg_len > self.chunk_size:
+                # Flush current buffer
+                if current_chunk:
+                    final_chunks.append("".join(current_chunk))
+                    current_chunk = []
+                    current_len = 0
+                final_chunks.append(segment)
+                continue
 
-        if current_split:
-            good_splits.append(current_split)
+            # If adding this segment exceeds the size, finalize the current chunk
+            if current_len + seg_len > self.chunk_size:
+                final_chunks.append("".join(current_chunk))
+                
+                # --- OVERLAP LOGIC ---
+                # We need to keep the "tail" of the previous chunk to start the new one.
+                # We backtrack from the end of current_chunk until we have enough overlap.
+                overlap_buffer = []
+                overlap_len = 0
+                
+                # Iterate backwards through the current chunk segments
+                for prev_seg in reversed(current_chunk):
+                    prev_len = self._token_len(prev_seg)
+                    if overlap_len + prev_len > self.chunk_overlap:
+                        break
+                    overlap_buffer.insert(0, prev_seg)
+                    overlap_len += prev_len
+                
+                current_chunk = overlap_buffer
+                current_len = overlap_len
 
-        # Recursive step
-        for s in good_splits:
-            if len(s) <= self.chunk_size or not new_separators:
-                final_chunks.append(s)
-            else:
-                final_chunks.extend(self._split_text(s, new_separators))
+            current_chunk.append(segment)
+            current_len += seg_len
+
+        if current_chunk:
+            final_chunks.append("".join(current_chunk))
         
         return final_chunks
 
-    def split_text(self, text):
-        return self._split_text(text, self.separators)
+    def _recursive_split(self, text, separators):
+        """Recursively breaks text down into smallest units (sentences/words)."""
+        final_segments = []
+        separator = separators[0]
+        new_separators = separators[1:]
+        
+        # If no separators left, text is the atomic unit (even if long)
+        if not separator:
+            return [text] if text else []
+
+        # Split current text
+        splits = text.split(separator)
+        
+        # Re-attach separator to the end of each split (except the last)
+        # to preserve punctuation/newlines in the final output.
+        for i, s in enumerate(splits):
+            if i < len(splits) - 1:
+                s += separator
+            if not s:
+                continue
+                
+            # If the segment is small enough to be a building block, keep it.
+            # If it's still huge, recurse deeper.
+            if self._token_len(s) <= self.chunk_size or not new_separators:
+                final_segments.append(s)
+            else:
+                final_segments.extend(self._recursive_split(s, new_separators))
+                
+        return final_segments
 
 # --- GIBBERISH CHECKER ---
 

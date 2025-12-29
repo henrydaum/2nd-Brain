@@ -320,21 +320,16 @@ class Database:
 
     # SEARCH FUNCTION
 
-    def search_lexical(self, query, negative_query, limit=20):
+    def search_lexical(self, query, limit=20):
+        """Performs a lexical search using FTS5 index, looking for results which have ALL the words in the query. For example, 'good cow' needs a document with both 'good' AND 'cow'."""
         with self.lock:
-            final_match_query = query
-            if negative_query:
-                clean_neg = negative_query.strip()
-                if clean_neg:
-                    final_match_query = f"{query} NOT {clean_neg}"
-
             cur = self.conn.execute("""
                 SELECT path, content, source, bm25(search_index) as rank 
                 FROM search_index 
                 WHERE search_index MATCH ?
                 ORDER BY rank 
                 LIMIT ?
-            """, (final_match_query, limit))
+            """, (query, limit))
             return cur.fetchall()
 
     # GUI SETTINGS

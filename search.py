@@ -31,7 +31,7 @@ class SearchEngine:
                 return []
 
             # - Using the updated unpack (path, content, rank)
-            rows = self.db.search_lexical(cleaned, None, limit=limit)
+            rows = self.db.search_lexical(cleaned, limit=limit)
             
             results = []
             for path, content, source, rank in rows:
