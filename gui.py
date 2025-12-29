@@ -683,6 +683,9 @@ class MainWindow(QMainWindow):
             QListWidget::item:selected:hover {{ background-color: {BG_LIGHT}; border: none; outline: none; }}
             QListWidget::item:pressed {{ background-color: {BG_DARK}; color: {TEXT_MAIN}; border: none; outline: none; }}
         """)
+        # For hover events
+        self.image_list.setMouseTracking(True)
+        self.image_list.viewport().installEventFilter(self)
 
         # TEXT AREA FOR AI INSIGHTS TAB
         self.rag_page = QWidget()
@@ -775,6 +778,13 @@ class MainWindow(QMainWindow):
 
     def eventFilter(self, obj, event):
         """Automatically found and installed by 'QApplication.instance().installEventFilter(self)'"""
+        # Image list hover effect
+        if event.type() == QEvent.MouseMove:
+            if obj is self.image_list.viewport():
+                item = self.image_list.itemAt(event.pos())
+                cursor = Qt.PointingHandCursor if item else Qt.ArrowCursor
+                self.image_list.setCursor(cursor)
+
         # Konami Code - track last 10 keys (non-blocking)
         if event.type() == QEvent.KeyPress:
             # Only track keys when not auto-repeating and outside cooldown
@@ -813,6 +823,7 @@ class MainWindow(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(5, 5, 5, 5)
+        widget.setCursor(Qt.PointingHandCursor)
         
         # 1. File Name Label
         lbl_name = QLabel(name_text)
