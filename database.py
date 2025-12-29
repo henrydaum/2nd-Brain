@@ -29,6 +29,7 @@ class Database:
         with self.lock:
             # WAL (write-ahead logging) mode - read and write can occur simultaneously
             self.conn.execute("PRAGMA journal_mode=WAL;")
+            self.conn.execute("PRAGMA cache_size = -50000;")
             
             # Primary Key is (path, task_type)
             self.conn.execute("""
@@ -379,6 +380,8 @@ class Database:
 
             # 1. PHYSICAL CHECK (Corruption)
             try:
+                # Reindex
+                self.conn.execute("REINDEX;")
                 # This checks for disk-level corruption (broken pages, bad indices)
                 cursor = self.conn.execute("PRAGMA integrity_check;")
                 result = cursor.fetchone()[0]
@@ -446,4 +449,13 @@ class Database:
             """)
 
             self.conn.commit()
-            logger.info("Database integrity validation complete.")
+
+            try:
+                # VACUUM to optimize the database after deletions
+                self.conn.execute("VACUUM;")
+                # Optimize WAL
+                self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+            except Exception as e:
+                logger.error(f"Database optimization failed: {e}")            
+
+            logger.info("Database integrity validation and optimization complete.")

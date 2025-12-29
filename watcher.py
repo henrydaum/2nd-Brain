@@ -123,19 +123,20 @@ class FileWatcherService:
                     self._known_mtimes[path] = mtime
 
                     if path not in db_state:
-                        logger.info(f"[Sync] Found New: {name}")
+                        logger.info(f"[Sync] Found new → {name}")
                         self._queue_all_tasks(path, mtime)
 
                     elif abs(mtime - db_state[path]) > 1.0:
-                        logger.info(f"[Sync] Found Modified: {name}")
+                        logger.info(f"[Sync] Found modified → {name}")
                         self._queue_all_tasks(path, mtime)
         # Cleanup Ghosts
         for db_path in db_state:
             # 3. If you removed .txt from config, .txt files won't be in disk_files
             # So this standard check will catch them and DELETE them.
             if db_path not in disk_files:
-                logger.info(f"[Sync] Deleting: {Path(db_path).name}")
-                self.orchestrator.submit_task("DELETE", db_path, priority=0)  # Highest priority
+                logger.info(f"[Sync] Found deleted → {Path(db_path).name}")
+                # This task will also be removed in the process, so no need to do cleanup.
+                self.orchestrator.submit_task("DELETE", db_path, priority=1)  # Highest priority
                 continue
 
 class DebouncedEventHandler(FileSystemEventHandler):
@@ -207,7 +208,7 @@ class DebouncedEventHandler(FileSystemEventHandler):
                         return 
                     
                     self.service._known_mtimes[path] = current_mtime
-                    logger.info(f"[Sync] Event stable: {task_type} -> {Path(path).name}")
+                    logger.info(f"[Sync] Found {task_type.lower()} → {Path(path).name}")
                     self.service._queue_all_tasks(path, current_mtime)
                 except OSError:
                     pass
@@ -226,14 +227,17 @@ class DebouncedEventHandler(FileSystemEventHandler):
 
         for target in targets:
             # This task will also be removed in the process, so no need to do cleanup.
-            self.orchestrator.submit_task("DELETE", target, priority=0)  # Highest priority
-            logger.info(f"[Sync] Deleting: {Path(target).name}")
+            self.orchestrator.submit_task("DELETE", target, priority=1)  # Highest priority
+            logger.info(f"[Sync] Found deleted → {Path(target).name}")
 
     # --- EVENT WRAPPERS ---
     # CRITICAL FIX: Removed the "is_valid_file" check at the door.
     # We let everything through to the debouncer so it can decide if it's a folder or file.
 
     def on_modified(self, event):
+        # Ignore noisy directory modifications... this would ordinarily re-queue everything inside.
+        if event.is_directory:
+            return
         self._debounce_task(event.src_path, "MODIFIED")
 
     def on_created(self, event):
