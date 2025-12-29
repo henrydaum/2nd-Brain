@@ -135,7 +135,7 @@ class Screenshotter:
         if time.time() - self.last_cleanup_time < 3600:
             return
 
-        days = self.config.get('delete_screenshots_after', 10)
+        days = self.config.get('screenshot_delete_after', 10)
         
         # If set to 0 or None, disable cleanup
         if not days or days <= 0:

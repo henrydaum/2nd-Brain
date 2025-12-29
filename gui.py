@@ -150,6 +150,7 @@ class AdvancedSearchDialog(QDialog):
         self.btn_folder_action = QPushButton()
         self.btn_folder_action.setFixedWidth(40) 
         self.btn_folder_action.clicked.connect(self.handle_folder_toggle)
+        self.btn_folder_action.setCursor(Qt.PointingHandCursor)
         
         folder_layout.addWidget(self.txt_folder)
         folder_layout.addWidget(self.btn_folder_action)
@@ -164,12 +165,15 @@ class AdvancedSearchDialog(QDialog):
 
         self.chk_ocr = QCheckBox("OCR")
         self.chk_ocr.setChecked(self.source_filter.get("OCR", True))
+        self.chk_ocr.setCursor(Qt.PointingHandCursor)
         
         self.chk_embed = QCheckBox("EMBED")
         self.chk_embed.setChecked(self.source_filter.get("EMBED", True))
+        self.chk_embed.setCursor(Qt.PointingHandCursor)
         
         self.chk_llm = QCheckBox("LLM")
         self.chk_llm.setChecked(self.source_filter.get("LLM", True))
+        self.chk_llm.setCursor(Qt.PointingHandCursor)
         
         btn_apply = QPushButton("Done")
         btn_apply.setStyleSheet(f"""
@@ -177,6 +181,7 @@ class AdvancedSearchDialog(QDialog):
             QPushButton:hover {{ background-color: {ACCENT_COLOR}; color: {BG_DARK}; }}
         """)
         btn_apply.clicked.connect(self.apply_filters)
+        btn_apply.setCursor(Qt.PointingHandCursor)
 
         source_layout.addWidget(self.chk_ocr)
         source_layout.addWidget(self.chk_embed)
@@ -444,6 +449,7 @@ class MainWindow(QMainWindow):
         self.btn_search.setCheckable(True)
         self.btn_search.setChecked(True)
         self.btn_search.clicked.connect(lambda: self.switch_page(0))
+        self.btn_search.setCursor(Qt.PointingHandCursor)
         self.btn_search.setIconSize(QSize(26, 26))
         self.btn_search.setFixedSize(42, 42)
         
@@ -454,6 +460,7 @@ class MainWindow(QMainWindow):
         self.btn_settings.setIcon(settings_icon)
         self.btn_settings.setCheckable(True)
         self.btn_settings.clicked.connect(lambda: self.switch_page(1))
+        self.btn_settings.setCursor(Qt.PointingHandCursor)
         self.btn_settings.setIconSize(QSize(26, 26))
         self.btn_settings.setFixedSize(42, 42)
 
@@ -464,6 +471,7 @@ class MainWindow(QMainWindow):
         self.btn_logs.setIcon(log_icon)
         self.btn_logs.setCheckable(True)
         self.btn_logs.clicked.connect(lambda: self.switch_page(2))
+        self.btn_logs.setCursor(Qt.PointingHandCursor)
         self.btn_logs.setIconSize(QSize(26, 26))
         self.btn_logs.setFixedSize(42, 42)
         
@@ -531,6 +539,7 @@ class MainWindow(QMainWindow):
                 selection-color: white;
             }
         """)
+        self.search_input.setCursor(Qt.IBeamCursor)
 
     # SEARCH PAGE BUTTONS - each of these follow a pattern: icon, tooltip, size, style, padding layout
 
@@ -552,6 +561,7 @@ class MainWindow(QMainWindow):
             }}
         """)
         self.btn_filter.clicked.connect(self.handle_filter)
+        self.btn_filter.setCursor(Qt.PointingHandCursor)
         self.btn_filter_container = QWidget()
         self.btn_filter_container.setStyleSheet("""background-color: transparent;""")
         btn_filter_layout = QVBoxLayout(self.btn_filter_container)
@@ -577,6 +587,7 @@ class MainWindow(QMainWindow):
             }}
         """)
         self.btn_attach.clicked.connect(self.handle_attach)
+        self.btn_attach.setCursor(Qt.PointingHandCursor)
         self.btn_attach_container = QWidget()
         self.btn_attach_container.setStyleSheet("""background-color: transparent;""")
         btn_attach_layout = QVBoxLayout(self.btn_attach_container)
@@ -604,6 +615,7 @@ class MainWindow(QMainWindow):
             }}
         """)
         self.btn_send.clicked.connect(self.run_search)
+        self.btn_send.setCursor(Qt.PointingHandCursor)
         self.btn_send_container = QWidget()
         self.btn_send_container.setStyleSheet("""background-color: transparent;""")
         btn_send_layout = QVBoxLayout(self.btn_send_container)
@@ -700,6 +712,8 @@ class MainWindow(QMainWindow):
         self.results_tabs.addTab(self.doc_table, "Documents")
         self.results_tabs.addTab(self.image_list, "Images")
         self.results_tabs.addTab(self.rag_page, "AI Insights")
+        # Set cursor for tab bar
+        self.results_tabs.tabBar().setCursor(Qt.PointingHandCursor)
         # Add it to the main search page
         search_layout.addWidget(self.results_tabs, 1)
 
@@ -1336,33 +1350,33 @@ class MainWindow(QMainWindow):
         self.add_settings_header("Live Controls")
 
         # A. Model Toggles
-        self.btn_ocr_toggle = self.add_live_setting_row("OCR Engine", "Load/Unload Windows OCR", 
+        self.btn_ocr_toggle = self.add_live_setting_row("Optical Character Recognition (OCR)", "Extracts text from images for lexical (keyword) search. Lexical search is always enabled.",
                                   lambda: self.toggle_model('ocr'), color=OUTLINE)
-        self.btn_embed_toggle = self.add_live_setting_row("Embeddings", "Load/Unload Embedding Models, enables semantic search", 
+        self.btn_embed_toggle = self.add_live_setting_row("Embedding Models", "Create embeddings from documents and images for semantic search. Indexes text for lexical search. When the model is loaded, semantic search is enabled.",
                                   lambda: self.toggle_model('embed'), color=OUTLINE)
-        self.btn_llm_toggle = self.add_live_setting_row("Local LLM", "Load/Unload Chat Model, enables AI Insights",
+        self.btn_llm_toggle = self.add_live_setting_row("Large Language Model (LLM)", "Generates summaries from documents and images, which are then embedded for semantic search and indexed for lexical search. When the model is loaded, AI Insights are generated for search results.",
                                   lambda: self.toggle_model('llm'), color=OUTLINE)
-        self.btn_screenshotter_toggle = self.add_live_setting_row("Screen Capture", f"Start/Stop taking screenshots every {self.config.get('screenshot_interval', 'N')} seconds, deleted after {self.config.get('delete_screenshots_after', 'N')} days", 
+        self.btn_screenshotter_toggle = self.add_live_setting_row("Screen Capture", f"Takes screenshots every {self.config.get('screenshot_interval', 'N')} seconds.", 
                                   lambda: self.toggle_model('screenshotter'), color=OUTLINE)
 
-        self.add_live_setting_row("Open Data Folder", "Manage all user data", 
+        self.add_live_setting_row("Open Data Folder", "Open the local AppData folder where data records are stored.",
                                   lambda: os.startfile(DATA_DIR), color=OUTLINE)
         # B. External Auth
-        self.add_live_setting_row("Google Drive", "Reauthorize connection", 
+        self.add_live_setting_row("Reauthorize Google Drive", "Retry the Google OAuth flow by deleting token.json from the local AppData folder.",
                                   lambda: self.reauthorize_drive(), color=OUTLINE)
         # C. Database Actions
-        self.add_live_setting_row("Retry Tasks", "Set all 'FAILED' tasks back to 'PENDING'", 
+        self.add_live_setting_row("Retry Tasks", "Set all 'FAILED' tasks back to 'PENDING' for retry.",
                                   lambda: self.run_db_action('retry_failed'), color="#d5b462")
-        self.add_live_setting_row("Reset OCR Data", "Delete all OCR text & re-queue images", 
+        self.add_live_setting_row("Reset OCR Data", "Delete data from OCR tasks and then re-queue OCR tasks.",
                                   lambda: self.run_db_action('reset_service', ['OCR']), color="#e06c75")
-        self.add_live_setting_row("Reset Embeddings", "Delete all vectors & re-queue all files", 
+        self.add_live_setting_row("Reset Embeddings", "Delete data from EMBED tasks and then re-queue EMBED tasks.",
                                   lambda: self.run_db_action('reset_service', ['EMBED']), color="#e06c75")
-        self.add_live_setting_row("Reset LLM Data", "Delete AI analysis & re-queue all files", 
+        self.add_live_setting_row("Reset LLM Data", "Delete data from LLM tasks and then re-queue LLM tasks.",
                                   lambda: self.run_db_action('reset_service', ['LLM']), color="#e06c75")
         self.settings_layout.addSpacing(30)  # Space between sections
-
-    # SETTINGS SECTION 2: CONFIGURATION (Reload Required)
-        self.add_settings_header("System Configuration (Reload Required)")
+    
+    # SETTINGS SECTION 2: CONFIGURATION
+        self.add_settings_header("System Configuration")
         self.config_widgets = {} # To store inputs for saving
         # Iterate over config keys to create rows
         # Filter this list to hide internal keys!
@@ -1385,6 +1399,7 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage("Restarting application...", 5000)
             self.restart()
         btn_save.clicked.connect(save_and_restart)
+        btn_save.setCursor(Qt.PointingHandCursor)
         self.settings_layout.addWidget(btn_save)
 
     def save_config(self):
@@ -1447,9 +1462,9 @@ class MainWindow(QMainWindow):
         """Creates a row with Title, Subtitle, and an Action Button for the settings."""
         frame = QFrame()
         frame.setStyleSheet(f"background-color: {BG_LIGHT}; border-radius: 6px;")
-        frame.setFixedHeight(60)
+        frame.setMinimumHeight(60)
         layout = QHBoxLayout(frame)
-        layout.setContentsMargins(15, 0, 15, 0)
+        layout.setContentsMargins(15, 10, 15, 10)
         # Text
         text_layout = QVBoxLayout()
         text_layout.setSpacing(2)
@@ -1458,6 +1473,7 @@ class MainWindow(QMainWindow):
         t.setFont(QFont("Segoe UI", 11, QFont.Bold))
         t.setStyleSheet("border: none; background: transparent;")
         s = QLabel(subtitle)
+        s.setWordWrap(True)
         s.setFont(QFont("Segoe UI", 9))
         s.setStyleSheet("color: #888; border: none; background: transparent;")
         text_layout.addWidget(t)
@@ -1471,9 +1487,9 @@ class MainWindow(QMainWindow):
             QPushButton:hover {{ background-color: {color}; }}
         """)
         btn.clicked.connect(callback)
+        btn.setCursor(Qt.PointingHandCursor)
         # Assemble
-        layout.addLayout(text_layout)
-        layout.addStretch()
+        layout.addLayout(text_layout, 1)
         layout.addWidget(btn)
         self.settings_layout.addWidget(frame)
         return btn  # So that the text can be updated later
@@ -1501,6 +1517,7 @@ class MainWindow(QMainWindow):
             padding: 4px;
         """)
         inp.setFixedWidth(500)
+        inp.setCursor(Qt.IBeamCursor)
         # Store for saving later
         self.config_widgets[key] = inp
         # Assemble

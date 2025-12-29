@@ -77,8 +77,8 @@ The application generates a config.json file in the %LOCALAPPDATA%/2nd Brain/ di
 | `max_workers` | The maximum number of background threads used by the Orchestrator. Use the maximum your computer can handle. | Integer (e.g., `4`, `6`, `12`) |
 | `ocr_backend` | The OCR engine to use. Currently, only the native Windows 10/11 engine is fully implemented. | `"Windows"` |
 | `embed_backend` | The source used for generating vector embeddings. Right now, there is only one source implemented. | `"Sentence Transformers"` |
-| `text_model_name` | The HuggingFace model ID used for embedding text documents. | String (e.g., `"BAAI/bge-small-en-v1.5"`, `"BAAI/bge-large-en-v1.5"`, and `"BAAI/bge-m3"`—these have been extensively tested and work well; bge-m3 is multilingual.) |
-| `image_model_name` | The CLIP model used for embedding images. | String (e.g., `"clip-ViT-B-32"`, `"clip-ViT-B-16"`, and `"clip-ViT-L-14"`—these have been extensively tested and work well.) |
+| `embed_text_model_name` | The HuggingFace model ID used for embedding text documents. | String (e.g., `"BAAI/bge-small-en-v1.5"`, `"BAAI/bge-large-en-v1.5"`, and `"BAAI/bge-m3"`—these have been extensively tested and work well; bge-m3 is multilingual.) |
+| `embed_image_model_name` | The CLIP model used for embedding images. | String (e.g., `"clip-ViT-B-32"`, `"clip-ViT-B-16"`, and `"clip-ViT-L-14"`—these have been extensively tested and work well.) |
 | `llm_backend` | The service provider for the LLM analysis tasks. | `"LM Studio"`, `"OpenAI"` |
 | `lms_model_name` | The model identifier to request when connecting to a local LM Studio server. In order for this to work, LM Studio must be running in the background with the model with this name pre-downloaded. | String (e.g., `"gemma-3-4b-it"`) |
 | `openai_model_name` | The model identifier to use if OpenAI backend is selected. | String (e.g., `"gpt-4o"`, `"gpt-3.5-turbo"`) |
@@ -89,10 +89,10 @@ The application generates a config.json file in the %LOCALAPPDATA%/2nd Brain/ di
 | `num_results` | The maximum number of search results to display. | Integer (e.g., `20`, `50`) |
 | `text_extensions` | File extensions treated as text documents. Every extension here has a parser in Parsers.py, but more can be written. | List of strings (all valid: `[".txt", ".md", ".pdf", ".docx", ".doc", ".gdoc", ".rtf", ".pptx", ".csv", ".xlsx", ".xls", ".json", ".yaml", ".yml", ".xml", ".ini", ".toml", ".env", ".py", ".js", ".jsx", ".ts", ".tsx", ".html", ".css", ".c", ".cpp", ".h", ".java", ".cs", ".php", ".rb", ".go", ".rs", ".sql", ".sh", ".bat", ".ps1"]`) |
 | `image_extensions` | File extensions treated as images. Every extension written here has a parser in Parsers.py. | List of strings (all valid: `[".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".heif", ".tif", ".tiff", ".bmp", ".ico"]`) |
-| `use_cuda` | Enables GPU acceleration for embeddings/OCR if available. | `true`, `false` |
+| `embed_use_cuda` | Enables GPU acceleration for embeddings/OCR if available. | `true`, `false` |
 | `screenshot_interval`| The delay in seconds between automatic screen captures. | Integer (e.g., `15`, `60`) |
 | `screenshot_folder` | Custom path to save screenshots. If empty, defaults to internal AppData folder. | String (Path) or `""` |
-| `delete_screenshots_after` | The number of days to retain screenshots before auto-deletion. | Integer (e.g., `7`, `30`) |
+| `screenshot_delete_after` | The number of days to retain screenshots before auto-deletion. | Integer (e.g., `7`, `30`) |
 
 ## Architecture
 

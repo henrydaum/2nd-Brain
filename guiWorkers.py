@@ -182,7 +182,7 @@ class LLMWorker(QThread):
 
         # -- Footer --
         prompt_footer = "\n"
-        prompt_footer += f"{self.config.get('system_prompt', '')}\n\n"
+        prompt_footer += f"{self.config.get('llm_system_prompt', '')}\n\n"
         prompt_footer += "When you cite a search result, you MUST use Markdown link format: [filename.ext](full_file_path). Do this exactly.\n\n"
         prompt_footer += "YOUR RESPONSE:\n"
 

@@ -31,19 +31,18 @@ def load_config(file_path):
         "max_workers": 6,
         "ocr_backend": "Windows",
         "embed_backend": "Sentence Transformers",
-        "text_model_name": "BAAI/bge-small-en-v1.5",
-        "image_model_name": "clip-ViT-B-32",
+        "embed_text_model_name": "BAAI/bge-small-en-v1.5",
+        "embed_image_model_name": "clip-ViT-B-32",
         "llm_backend": "LM Studio",
-        "lms_model_name": "gemma-3-4b-it@q4_k_s",
-        "openai_model_name": "gpt-4.1",
+        "llm_model_name": "gemma-3-4b-it@q4_k_s",
         "use_drive": True,
         "num_results": 30,
         "text_extensions": [".txt", ".md", ".pdf", ".docx", ".gdoc"],
         "image_extensions": [".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".heif", ".tif", ".tiff", ".bmp", ".ico"],
-        "use_cuda": True,
+        "embed_use_cuda": True,
         "screenshot_interval": 15,
         "screenshot_folder": "Screenshots",
-        "delete_screenshots_after": 9
+        "screenshot_delete_after": 9
     }
 
     # 2. Check if file exists
@@ -75,13 +74,13 @@ def initialize_models(config):
     logger.info("Setting up Embedding Models")
     from services.embedClass import SentenceTransformerEmbedder
     if config['embed_backend'] == "Sentence Transformers":
-        models['image'] = SentenceTransformerEmbedder(config['image_model_name'], config)
-        models['text'] = SentenceTransformerEmbedder(config['text_model_name'], config)
+        models['image'] = SentenceTransformerEmbedder(config['embed_image_model_name'], config)
+        models['text'] = SentenceTransformerEmbedder(config['embed_text_model_name'], config)
     # LLM
     logger.info("Setting up LLM")
     from services.llmClass import LMStudioLLM, OpenAILLM
     if config['llm_backend'] == "LM Studio":
-        models['llm'] = LMStudioLLM(config['lms_model_name'])
+        models['llm'] = LMStudioLLM(config['llm_model_name'])
     elif config['llm_backend'] == "OpenAI":
         import keyring
         api_key = keyring.get_password("SecondBrain", "OPENAI_API_KEY")
@@ -90,7 +89,7 @@ def initialize_models(config):
             logger.info("Got OpenAI API Key from environmental variable.")
         else:
             logger.info("Got OpenAI API Key from keyring.")
-        models['llm'] = OpenAILLM(config['openai_model_name'], api_key)
+        models['llm'] = OpenAILLM(config['llm_model_name'], api_key)
     # Screenshotter
     logger.info("Setting up Screenshotter")
     from services.screenshotterClass import Screenshotter

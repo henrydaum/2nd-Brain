@@ -231,7 +231,7 @@ def get_text_content(file_path: pathlib.Path, drive_service, config) -> str:
     Returns: full text content, or None/empty string if unreadable.
     """
     # 1. Get Parser
-    is_multimodal = config.get('image_model_name') is not None
+    is_multimodal = config.get('embed_image_model_name') is not None
     use_drive = config.get("use_drive", False)
     handler = file_handler(file_path.suffix, is_multimodal, use_drive, config)
     if not handler:

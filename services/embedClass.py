@@ -108,8 +108,8 @@ class SentenceTransformerEmbedder(BaseEmbedder):
         from sentence_transformers import SentenceTransformer
         
         # Determine Device
-        use_cuda = self.config.get('use_cuda', True)
-        self.device = "cuda" if torch.cuda.is_available() and use_cuda else "cpu"
+        embed_use_cuda = self.config.get('embed_use_cuda', True)
+        self.device = "cuda" if torch.cuda.is_available() and embed_use_cuda else "cpu"
         logger.info(f"Loading model on {self.device}...")
 
         # 1. Check Internet / Environment
