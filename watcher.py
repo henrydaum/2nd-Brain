@@ -134,7 +134,7 @@ class FileWatcherService:
             # 3. If you removed .txt from config, .txt files won't be in disk_files
             # So this standard check will catch them and DELETE them.
             if db_path not in disk_files:
-                logger.info(f"[Sync] Deleting Ghost: {Path(db_path).name}")
+                logger.info(f"[Sync] Deleting: {Path(db_path).name}")
                 self.orchestrator.submit_task("DELETE", db_path, priority=0)  # Highest priority
                 continue
 
@@ -224,9 +224,10 @@ class DebouncedEventHandler(FileSystemEventHandler):
         if not targets:
             return
 
-        # Prefer bulk delete to avoid one-by-one overhead
-        self.orchestrator.db.remove_tasks_bulk(targets)
-        logger.info(f"✓ Bulk-deleted {len(targets)} paths under {deleted_path}")
+        for target in targets:
+            # This task will also be removed in the process, so no need to do cleanup.
+            self.orchestrator.submit_task("DELETE", target, priority=0)  # Highest priority
+            logger.info(f"[Sync] Deleting: {Path(target).name}")
 
     # --- EVENT WRAPPERS ---
     # CRITICAL FIX: Removed the "is_valid_file" check at the door.

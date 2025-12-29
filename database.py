@@ -146,35 +146,44 @@ class Database:
                     file_mtime = CASE WHEN excluded.file_mtime > 0 THEN excluded.file_mtime ELSE tasks.file_mtime END
             """, (path, task_type, status, mtime))
             self.conn.commit()
-    
-    def remove_task(self, path: str):
-        """No longer in use, but kept for completeness."""
-        # Removes ALL traces of this file (cleanup) - all 5 tables
-        with self.lock:
-            # 1. Clear Service Data
-            self.conn.execute("DELETE FROM ocr_results WHERE path=?", (path,))
-            self.conn.execute("DELETE FROM embeddings WHERE path=?", (path,))
-            self.conn.execute("DELETE FROM llm_analysis WHERE path=?", (path,))
-            # 2. Clear Search Index (The triggers might handle this, but better safe than sorry)
-            self.conn.execute("DELETE FROM search_index WHERE path=?", (path,))
-            # 3. Clear the Task itself
-            self.conn.execute("DELETE FROM tasks WHERE path=?", (path,))
-            self.conn.commit()
 
-    def remove_tasks_bulk(self, paths: list[str], batch_size: int = 500):
+    def remove_tasks_bulk(self, paths: list[str]):
         """Delete all traces for many paths in as few transactions as possible."""
-        if not paths:
-            return
         with self.lock:
-            for i in range(0, len(paths), batch_size):
-                batch = paths[i:i+batch_size]
-                placeholders = ",".join("?" * len(batch))
-                self.conn.execute(f"DELETE FROM ocr_results    WHERE path IN ({placeholders})", batch)
-                self.conn.execute(f"DELETE FROM embeddings     WHERE path IN ({placeholders})", batch)
-                self.conn.execute(f"DELETE FROM llm_analysis   WHERE path IN ({placeholders})", batch)
-                self.conn.execute(f"DELETE FROM search_index   WHERE path IN ({placeholders})", batch)
-                self.conn.execute(f"DELETE FROM tasks          WHERE path IN ({placeholders})", batch)
-            self.conn.commit()
+            try:
+                if not paths:
+                    return
+                # Temporarily disable triggers to avoid overhead
+                self.conn.execute("DROP TRIGGER IF EXISTS t_embed_delete;")
+                self.conn.execute("DROP TRIGGER IF EXISTS t_ocr_delete;")
+                # Delete all the data
+                placeholders = ",".join("?" * len(paths))
+                self.conn.execute(f"DELETE FROM ocr_results    WHERE path IN ({placeholders})", paths)
+                self.conn.execute(f"DELETE FROM embeddings     WHERE path IN ({placeholders})", paths)
+                self.conn.execute(f"DELETE FROM llm_analysis   WHERE path IN ({placeholders})", paths)
+                self.conn.execute(f"DELETE FROM search_index   WHERE path IN ({placeholders})", paths)
+                self.conn.execute(f"DELETE FROM tasks          WHERE path IN ({placeholders})", paths)
+                self.conn.commit()
+                return True
+            except Exception as e:
+                logger.error(f"Bulk delete failed: {e}")
+                return False
+            finally:
+                restore_triggers_sql = """
+                    CREATE TRIGGER IF NOT EXISTS t_embed_delete AFTER DELETE ON embeddings
+                    BEGIN
+                        DELETE FROM search_index 
+                        WHERE path = old.path 
+                        AND source = CASE WHEN old.chunk_index < 0 THEN 'llm' ELSE 'embed' END;
+                    END;
+
+                    CREATE TRIGGER IF NOT EXISTS t_ocr_delete AFTER DELETE ON ocr_results
+                    BEGIN
+                        DELETE FROM search_index WHERE path = old.path AND source = 'ocr';
+                    END;
+                """
+                self.conn.executescript(restore_triggers_sql)
+                self.conn.commit()
 
     def mark_completed(self, path: str, task_type: str):
         # CHANGE: We must specify task_type to know WHICH task finished

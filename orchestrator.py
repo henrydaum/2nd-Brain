@@ -46,6 +46,8 @@ class Orchestrator:
         self.last_text_flush = time.time()
         self.image_buffer = []
         self.last_image_flush = time.time()
+        self.delete_buffer = []
+        self.last_delete_flush = time.time()
 
     def start(self):
         self.running = True
@@ -118,9 +120,11 @@ class Orchestrator:
                 
                 # Check Timers
                 if self.text_buffer and (current_time - self.last_text_flush > self.FLUSH_TIMEOUT):
-                    self._flush_buffer("text")
+                    self._flush_buffer_embed("text")
                 if self.image_buffer and (current_time - self.last_image_flush > self.FLUSH_TIMEOUT):
-                    self._flush_buffer("image")
+                    self._flush_buffer_embed("image")
+                if self.delete_buffer and (current_time - self.last_delete_flush > self.FLUSH_TIMEOUT):
+                    self._flush_buffer_delete()
 
                 # Get Job
                 try:
@@ -139,13 +143,20 @@ class Orchestrator:
                     if ext in img_exts:
                         self.image_buffer.append(job)
                         if len(self.image_buffer) >= self.BATCH_SIZE:
-                            self._flush_buffer("image")
+                            self._flush_buffer_embed("image")
                     elif ext in text_exts:
                         self.text_buffer.append(job)
                         if len(self.text_buffer) >= self.BATCH_SIZE:
-                            self._flush_buffer("text")
+                            self._flush_buffer_embed("text")
                     else:
                         self.db.add_or_update_task(job.path, "EMBED", "FAILED")
+                
+                elif job.task_type == "DELETE":
+                    self.pool_semaphore.release() # Release because we aren't using a thread yet
+                    self.delete_buffer.append(job)
+                    if len(self.delete_buffer) >= self.BATCH_SIZE:
+                        self._flush_buffer_delete()
+
                 else:
                     self.executor.submit(self._execute_job_wrapper, job)
 
@@ -159,7 +170,7 @@ class Orchestrator:
         finally:
             self.pool_semaphore.release() # Signal that this thread is free
 
-    def _flush_buffer(self, batch_type):
+    def _flush_buffer_embed(self, batch_type):
         target_buffer = self.text_buffer if batch_type == "text" else self.image_buffer
         if not target_buffer: return
 
@@ -173,8 +184,25 @@ class Orchestrator:
             
         logger.info(f"Dispatching {batch_type.upper()} Batch: {len(batch_jobs)} files")
         self.executor.submit(self._execute_batch_embed, batch_jobs, batch_type)
+    
+    def _flush_buffer_delete(self):
+        if not self.delete_buffer: return
+
+        batch_jobs = list(self.delete_buffer)
+        self.delete_buffer = []
+        self.last_delete_flush = time.time()
+        
+        logger.info(f"Dispatching DELETE Batch: {len(batch_jobs)} files")
+        self.executor.submit(self._execute_batch_delete, batch_jobs)
 
     # --- 3. DELEGATE TO REAL SERVICES ---
+
+    def _execute_batch_delete(self, jobs):
+        try:
+            self.db.remove_tasks_bulk([job.path for job in jobs])
+            logger.info(f"✓ Deleted: {len(jobs)} tasks from DB.")
+        except Exception as e:
+            logger.error(f"Batch Delete Error: {e}")
     
     def _execute_batch_embed(self, jobs, batch_type):
         try:
@@ -243,10 +271,6 @@ class Orchestrator:
                 else:
                     # FAILURE: Mark as FAILED (e.g. model was unloaded)
                     self.db.add_or_update_task(job.path, "EMBED_LLM", "FAILED")
-
-            elif job.task_type == "DELETE":
-                self.db.remove_task(job.path)
-                logger.info(f"✓ Deleted: {Path(job.path).name}")
 
         except Exception as e:
             logger.error(f"Task Failed: {e}")
