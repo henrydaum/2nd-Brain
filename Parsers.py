@@ -139,7 +139,7 @@ def download_drive_content(drive_service, doc_id: str, mimeType: str):
         
         fh.seek(0)
         text = fh.read().decode('utf-8')
-        logger.info(f"[Drive Download] {doc_id}: {len(text)} bytes")
+        logger.info(f"[Drive Download] {len(text)} bytes")
         return text
     except Exception as e:
         logger.error(f"[Drive Download Error] {e}")

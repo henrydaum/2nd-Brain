@@ -69,6 +69,16 @@ class FileWatcherService:
         ext = p.suffix.lower()
         return (ext in self.text_extensions) or (ext in self.image_extensions)
 
+    def _is_ignored_path(self, path):
+        parts = Path(path).parts
+        ignored = set(self.config.get("ignored_folders", []))
+        skip_hidden = self.config.get("skip_hidden_folders", True)
+        if any(part in ignored for part in parts):
+            return True
+        if skip_hidden and any(part.startswith('.') for part in parts):
+            return True
+        return False
+
     def _queue_all_tasks(self, path, mtime):
         """Helper to queue ALL independent tasks for a file."""
         ext = Path(path).suffix.lower()
@@ -94,23 +104,15 @@ class FileWatcherService:
         skip_hidden = self.orchestrator.config.get("skip_hidden_folders", True)
         
         for watch_dir in valid_dirs:
-            base = os.path.basename(watch_dir)
-            if base in ignored:
-                logger.warning(f"Sync directory has been ignored (see 'ignored_folders' in config.json): {watch_dir}")
-                continue
-            if skip_hidden and base.startswith('.'):
-                logger.warning(f"Sync directory is hidden and will be skipped (see 'skip_hidden_folders' in config.json): {watch_dir}")
+            if self._is_ignored_path(watch_dir):
+                logger.warning(f"Base directory is ignored/hidden, skipping: {watch_dir}")
                 continue
 
             for root, dirs, files in os.walk(watch_dir):
-
-                # 1. Remove explicitly blacklisted folders
-                ignored = self.orchestrator.config.get("ignored_folders", [])
-                dirs[:] = [d for d in dirs if d not in ignored]
-
-                # 2. Remove hidden folders (if enabled)
-                if self.orchestrator.config.get("skip_hidden_folders", True):
-                    dirs[:] = [d for d in dirs if not d.startswith('.')]
+                if self._is_ignored_path(root):
+                    continue
+                # Modify dirs in-place
+                dirs[:] = [d for d in dirs if not self._is_ignored_path(os.path.join(root, d))]
 
                 for name in files:
                     path = str(Path(os.path.join(root, name)))
@@ -170,23 +172,14 @@ class DebouncedEventHandler(FileSystemEventHandler):
             # --- 2. HANDLE FOLDERS (The "Suitcase" Logic) ---
             # If a folder is pasted or moved here, we must walk it to find the files inside.
             if os.path.isdir(path):
-                basename = os.path.basename(path)
-                ignored = self.config.get("ignored_folders", [])
-                if basename in ignored:
-                    return
-                if self.config.get("skip_hidden_folders", True) and basename.startswith('.'):
+                if self.service._is_ignored_path(path):
                     return
 
                 logger.info(f"[Sync] scanning directory: {Path(path).name}")
                 for root, dirs, files in os.walk(path):
-
-                    # 1. Remove explicitly blacklisted folders
-                    ignored = self.config.get("ignored_folders", [])
-                    dirs[:] = [d for d in dirs if d not in ignored]
-
-                    # 2. Remove hidden folders (if enabled)
-                    if self.config.get("skip_hidden_folders", True):
-                        dirs[:] = [d for d in dirs if not d.startswith('.')]
+                    if self.service._is_ignored_path(root):
+                        continue
+                    dirs[:] = [d for d in dirs if not self.service._is_ignored_path(os.path.join(root, d))]
 
                     for name in files:
                         file_path = str(Path(os.path.join(root, name)))
@@ -231,9 +224,6 @@ class DebouncedEventHandler(FileSystemEventHandler):
             logger.info(f"[Sync] Found deleted → {Path(target).name}")
 
     # --- EVENT WRAPPERS ---
-    # CRITICAL FIX: Removed the "is_valid_file" check at the door.
-    # We let everything through to the debouncer so it can decide if it's a folder or file.
-
     def on_modified(self, event):
         # Ignore noisy directory modifications... this would ordinarily re-queue everything inside.
         if event.is_directory:
