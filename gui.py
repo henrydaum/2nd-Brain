@@ -33,7 +33,7 @@ DATA_DIR = Path(os.getenv('LOCALAPPDATA')) / "2nd Brain"
 
 # --- VISUAL CONSTANTS ---
 # ACCENT_COLOR = "#61afef"   # Blue
-# ACCENT_COLOR = "#17616d"   # Second Brain blue
+ACCENT_COLOR_2 = "#17616d"   # Second Brain blue
 ACCENT_COLOR = "#cbe3a7"   # Second Brain green
 BG_DARK      = "#1e2227"   # Main Background
 BG_LIGHT     = "#282c34"   # Sidebar/Header
@@ -41,6 +41,12 @@ BG_MEDIUM    = "#23272d"
 BG_INPUT     = "#181a1f"
 TEXT_MAIN    = "#abb2bf"
 OUTLINE      = "#3e4451"
+
+def get_tint(color, alpha=0.1):
+    """Returns a hex color string with the given alpha applied as a tint."""
+    c = QColor(color)
+    c.setAlphaF(alpha)
+    return c.name(QColor.NameFormat.HexArgb)
 
 # --- LOGGING HANDLER ---
 class GuiLogHandler(logging.Handler):
@@ -89,7 +95,7 @@ class AdvancedSearchDialog(QDialog):
     def __init__(self, current_folder, current_sources, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Search Filters")
-        self.setFixedSize(500, 200)
+        self.setFixedSize(500, 190)
         
         # Store initial state
         self.folder_path = current_folder
@@ -103,14 +109,14 @@ class AdvancedSearchDialog(QDialog):
             QLineEdit {{ 
                 background-color: {BG_INPUT}; 
                 border: 1px solid {OUTLINE}; 
-                border-radius: 4px; 
+                border-radius: 0px; 
                 padding: 6px; 
                 color: white; 
             }}
             QPushButton {{ 
                 background-color: {BG_LIGHT}; 
-                border: 1px solid {OUTLINE}; 
-                border-radius: 4px; 
+                border: 0px solid {OUTLINE}; 
+                border-radius: 0px; 
                 padding: 6px 12px; 
                 color: white;
             }}
@@ -125,12 +131,11 @@ class AdvancedSearchDialog(QDialog):
                 height: 18px;
                 border: 1px solid {OUTLINE};
                 background-color: {BG_INPUT};
-                border-radius: 3px;
+                border-radius: 2px;
             }}
             QCheckBox::indicator:checked {{
-                background-color: {ACCENT_COLOR};
+                background-color: {get_tint(ACCENT_COLOR, 0.4)};
                 border: 1px solid {ACCENT_COLOR};
-                image: url(path/to/checkmark.png); /* Optional: Standard Check behavior usually sufficient */
             }}
         """)
 
@@ -142,13 +147,16 @@ class AdvancedSearchDialog(QDialog):
         layout.addWidget(QLabel("Search in a specific folder:"))
         
         folder_layout = QHBoxLayout()
+        folder_layout.setSpacing(0)
         self.txt_folder = QLineEdit(self.folder_path if self.folder_path else "")
         self.txt_folder.setReadOnly(True)
         self.txt_folder.setPlaceholderText("All Folders (Default)")
         self.txt_folder.setStyleSheet("border: none;")
+        self.txt_folder.setFixedHeight(33)
         
         self.btn_folder_action = QPushButton()
-        self.btn_folder_action.setFixedWidth(40) 
+        self.btn_folder_action.setFixedWidth(60)
+        self.btn_folder_action.setFixedHeight(33)
         self.btn_folder_action.clicked.connect(self.handle_folder_toggle)
         self.btn_folder_action.setCursor(Qt.PointingHandCursor)
         
@@ -161,7 +169,7 @@ class AdvancedSearchDialog(QDialog):
         # --- SECTION 2: SOURCE FILTER ---
         layout.addWidget(QLabel("Search based on specific sources:"))
         source_layout = QHBoxLayout()
-        source_layout.setSpacing(20)
+        source_layout.setSpacing(15)
 
         self.chk_ocr = QCheckBox("OCR")
         self.chk_ocr.setChecked(self.source_filter.get("OCR", True))
@@ -176,9 +184,12 @@ class AdvancedSearchDialog(QDialog):
         self.chk_llm.setCursor(Qt.PointingHandCursor)
         
         btn_apply = QPushButton("Done")
+        btn_apply.setFixedWidth(60)
+        btn_apply.setFixedHeight(33)
+        hover_tint = get_tint(ACCENT_COLOR, 0.1)
         btn_apply.setStyleSheet(f"""
-            QPushButton {{ background-color: {BG_DARK}; color: {ACCENT_COLOR}; border-radius: 4px; border: 1px solid {ACCENT_COLOR}; min-height: 30px; padding: 0 10px;}}
-            QPushButton:hover {{ background-color: {ACCENT_COLOR}; color: {BG_DARK}; }}
+            QPushButton {{ background-color: transparent; color: {ACCENT_COLOR}; text-align: center; padding: 4px; border-radius: 0px; border: 1px solid {hover_tint}; }}
+            QPushButton:hover {{ text-decoration: underline; background-color: {hover_tint}; }}
         """)
         btn_apply.clicked.connect(self.apply_filters)
         btn_apply.setCursor(Qt.PointingHandCursor)
@@ -271,55 +282,44 @@ class ResultDetailsDialog(QDialog):
         # 4. Buttons (Open File | Close)
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
-        btn_text_color = "white"
+        hover_tint = get_tint(ACCENT_COLOR, 0.1)
         btn_style = f"""
-            QPushButton {{ 
-                background-color: {BG_DARK}; 
-                color: {btn_text_color}; 
-                border-radius: 4px; 
-                border: 1px solid {OUTLINE};
-                min-height: 30px;
-                padding: 0 10px;
-            }}
-            QPushButton:hover {{ background-color: {OUTLINE}; }}
+            QPushButton {{ background-color: transparent; color: {ACCENT_COLOR}; text-align: center; padding: 6px; border-radius: 0px; border: 1px solid {hover_tint}; }}
+            QPushButton:hover {{ text-decoration: underline; background-color: {hover_tint}; }}
         """
 
         # Attach File Button
-        color = OUTLINE
         btn_attach_result = QPushButton("Attach")
         btn_attach_result.setCursor(Qt.PointingHandCursor)
         btn_attach_result.clicked.connect(self.attach_and_close)
         btn_attach_result.setStyleSheet(btn_style)
         
         # Copy Path Button
-        color = OUTLINE
         btn_copy = QPushButton("Copy Path")
         btn_copy.setCursor(Qt.PointingHandCursor)
         btn_copy.clicked.connect(lambda: QApplication.clipboard().setText(self.path))
         btn_copy.setStyleSheet(btn_style)
 
         # Reveal in Explorer Button
-        color = OUTLINE
         btn_reveal = QPushButton("Show Location")
         btn_reveal.setCursor(Qt.PointingHandCursor)
         btn_reveal.clicked.connect(self.reveal_in_explorer)
         btn_reveal.setStyleSheet(btn_style)
 
         # Open File
-        color = OUTLINE
         btn_open = QPushButton("Open")
         btn_open.setCursor(Qt.PointingHandCursor)
         btn_open.clicked.connect(self.open_file)
         btn_open.setStyleSheet(btn_style)
         
         # Close
-        color = ACCENT_COLOR
         btn_close = QPushButton("Close")
         btn_close.setCursor(Qt.PointingHandCursor)
         btn_close.clicked.connect(self.accept)
+        hover_tint = get_tint(TEXT_MAIN, 0.1)
         btn_close.setStyleSheet(f"""
-            QPushButton {{ background-color: {BG_DARK}; color: {ACCENT_COLOR}; border-radius: 4px; border: 1px solid {color}; min-height: 30px; padding: 0 10px;}}
-            QPushButton:hover {{ background-color: {color}; color: {BG_DARK}; }}
+            QPushButton {{ background-color: transparent; color: {TEXT_MAIN}; text-align: center; padding: 6px; border-radius: 0px; border: 1px solid {hover_tint}; }}
+            QPushButton:hover {{ text-decoration: underline; background-color: {hover_tint}; }}
         """)
         
         # Add to layout
@@ -504,21 +504,21 @@ class MainWindow(QMainWindow):
         input_container_layout = QHBoxLayout(self.input_container_frame)
         input_container_layout.setContentsMargins(4, 5, 7, 0) # L, T, R, B - must be precies
         input_container_layout.setSpacing(0)
-        self.input_container_frame.setStyleSheet("""
-            QFrame {
+        self.input_container_frame.setStyleSheet(f"""
+            QFrame {{
                 color: #e1e2e8;
-                background-color: transparent;
+                background-color: {get_tint(BG_INPUT, 0.1)};
                 border: 1px solid #8d9199;
                 border-radius: 28px;
                 font-size: 14px;
                 selection-color: white;
-            }
+            }}
         """)
         
         # SEARCH BAR - TEXT INPUT
         self.search_input_vertical_padding = 12
         self.search_input = QTextEdit()
-        self.search_input.setPlaceholderText("Type to search")
+        self.search_input.setPlaceholderText("")
         # Dynamically adjust height based on content
         doc_height = int(self.search_input.document().size().height())
         self.search_input_min_height = doc_height
@@ -1398,9 +1398,11 @@ class MainWindow(QMainWindow):
         # Large Save Button
         btn_save = QPushButton("Save Settings and Reload")
         btn_save.setFixedHeight(45)
+        btn_save.setFixedWidth(275)
+        hover_tint = get_tint(ACCENT_COLOR, 0.1)
         btn_save.setStyleSheet(f"""
-            QPushButton {{ background-color: {BG_DARK}; color: {ACCENT_COLOR}; border-radius: 6px; border: 1px solid {ACCENT_COLOR}; font-weight: bold; }}
-            QPushButton:hover {{ background-color: {ACCENT_COLOR}; color: {BG_DARK}; }}
+            QPushButton {{ background-color: transparent; color: {ACCENT_COLOR}; text-align: center; padding: 4px; border-radius: 0px; border: 1px solid {hover_tint}; }}
+            QPushButton:hover {{ text-decoration: underline; background-color: {hover_tint}; }}
         """)
         def save_and_restart():
             self.save_config()
@@ -1408,9 +1410,7 @@ class MainWindow(QMainWindow):
             self.restart()
         btn_save.clicked.connect(save_and_restart)
         btn_save.setCursor(Qt.PointingHandCursor)
-        self.settings_layout.addWidget(btn_save)
-
-        self.settings_layout.addSpacing(13)
+        self.settings_layout.addWidget(btn_save, 0, Qt.AlignCenter)
 
     def save_config(self):
         """Reads values from UI inputs and writes to config.json"""        
@@ -1485,10 +1485,12 @@ class MainWindow(QMainWindow):
         # Button
         btn_text_color = "white"
         btn = QPushButton("Execute")
-        btn.setFixedWidth(95)
+        btn.setFixedWidth(120)
+        btn.setFixedHeight(35)
+        hover_tint = get_tint(color, 0.1)
         btn.setStyleSheet(f"""
-            QPushButton {{ background-color: transparent; color: {color}; border: 1px solid {color}; text-align: center; padding: 4px; }}
-            QPushButton:hover {{ text-decoration: underline; }}
+            QPushButton {{ background-color: transparent; color: {color}; text-align: center; padding: 4px; border-radius: 0px; border: 1px solid {hover_tint}; }}
+            QPushButton:hover {{ text-decoration: underline; background-color: {hover_tint}; }}
         """)
         btn.clicked.connect(callback)
         btn.setCursor(Qt.PointingHandCursor)
@@ -1504,7 +1506,7 @@ class MainWindow(QMainWindow):
         frame.setStyleSheet(f"background-color: {BG_DARK}; border-radius: 6px;")
         frame.setMinimumHeight(60)
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setContentsMargins(15, 10, 15, 10)
         # Text
         text_layout = QVBoxLayout()
         text_layout.setSpacing(2)

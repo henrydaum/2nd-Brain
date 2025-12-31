@@ -235,34 +235,15 @@ class Database:
 
             # 2. Organize into a clean dictionary
             stats = {
-                "OCR":   {"PENDING": 0, "DONE": 0, "FAILED": 0, "DB_ROWS": 0},
-                "EMBED": {"PENDING": 0, "DONE": 0, "FAILED": 0, "DB_ROWS": 0},
-                "EMBED_LLM": {"PENDING": 0, "DONE": 0, "FAILED": 0, "DB_ROWS": 0},
-                "LLM":   {"PENDING": 0, "DONE": 0, "FAILED": 0, "DB_ROWS": 0}
+                "OCR":   {"PENDING": 0, "DONE": 0, "FAILED": 0},
+                "EMBED": {"PENDING": 0, "DONE": 0, "FAILED": 0},
+                "EMBED_LLM": {"PENDING": 0, "DONE": 0, "FAILED": 0},
+                "LLM":   {"PENDING": 0, "DONE": 0, "FAILED": 0}
             }
             
             for t_type, status, count in rows:
                 if t_type in stats and status in stats[t_type]:
                     stats[t_type][status] = count
-
-            # 3. VALIDATION: Count actual data rows to ensure integrity
-            
-            # OCR: One row per file
-            cur = self.conn.execute("SELECT COUNT(*) FROM ocr_results")
-            stats["OCR"]["DB_ROWS"] = cur.fetchone()[0]
-
-            # EMBED: Multiple chunks per file, so we count DISTINCT paths
-            # This ensures the number matches the "DONE" task count
-            cur = self.conn.execute("SELECT COUNT(DISTINCT path) FROM embeddings")
-            stats["EMBED"]["DB_ROWS"] = cur.fetchone()[0]
-
-            # LLM: One row per file
-            cur = self.conn.execute("SELECT COUNT(*) FROM llm_analysis")
-            stats["LLM"]["DB_ROWS"] = cur.fetchone()[0]
-
-            # EMBED_LLM: Embeddings with negative chunk_index
-            cur = self.conn.execute("SELECT COUNT(DISTINCT path) FROM embeddings WHERE chunk_index < 0")
-            stats["EMBED_LLM"]["DB_ROWS"] = cur.fetchone()[0]
             
             # 4. Total Unique Files Tracked
             cur = self.conn.execute("SELECT COUNT(DISTINCT path) FROM tasks")
@@ -345,24 +326,54 @@ class Database:
         """
         Destructive: Deletes all data for a specific service and resets its tasks to PENDING.
         service_key: 'OCR', 'EMBED', or 'LLM'
+        Disables and enables triggers to avoid overhead during bulk deletions.
         """
         with self.lock:
-            if service_key == 'OCR':
-                self.conn.execute("DELETE FROM search_index WHERE source = 'ocr'")  # Not strictly necessary due to triggers, but safe.
-                self.conn.execute("DELETE FROM ocr_results")
-            elif service_key == 'EMBED':
-                self.conn.execute("DELETE FROM search_index WHERE source = 'embed'")
-                self.conn.execute("DELETE FROM embeddings WHERE chunk_index >= 0")
-            elif service_key == 'LLM':
-                self.conn.execute("DELETE FROM search_index WHERE source = 'llm'")
-                self.conn.execute("DELETE FROM llm_analysis")
-                self.conn.execute("DELETE FROM embeddings WHERE chunk_index < 0")
-                self.conn.execute("DELETE FROM tasks WHERE task_type='EMBED_LLM'")  # These will be remade
+            try:
+                # Temporarily disable triggers to avoid overhead
+                self.conn.execute("DROP TRIGGER IF EXISTS t_embed_delete;")
+                self.conn.execute("DROP TRIGGER IF EXISTS t_ocr_delete;")
 
-            # 3. Reset the tasks so they run again
-            self.conn.execute("UPDATE tasks SET status='PENDING' WHERE task_type=?", (service_key,))
-            self.conn.commit()
-            logger.info(f"Reset all data and tasks for service: {service_key}")
+                if service_key == 'OCR':
+                    self.conn.execute("DELETE FROM search_index WHERE source = 'ocr'")
+                    self.conn.execute("DELETE FROM ocr_results")
+                    self.conn.execute("UPDATE tasks SET status='PENDING' WHERE task_type='OCR'")
+
+                elif service_key == 'EMBED':
+                    self.conn.execute("DELETE FROM search_index WHERE source = 'embed'")
+                    self.conn.execute("DELETE FROM search_index WHERE source = 'llm'")
+                    self.conn.execute("DELETE FROM embeddings")
+                    self.conn.execute("UPDATE tasks SET status='PENDING' WHERE task_type='EMBED'")
+                    self.conn.execute("UPDATE tasks SET status='PENDING' WHERE task_type='EMBED_LLM'")
+
+                elif service_key == 'LLM':
+                    self.conn.execute("DELETE FROM llm_analysis")
+                    self.conn.execute("UPDATE tasks SET status='PENDING' WHERE task_type='LLM'")
+                    self.conn.execute("DELETE FROM tasks WHERE task_type='EMBED_LLM'")  # These will be remade
+                    # Must delete downstream data
+                    self.conn.execute("DELETE FROM search_index WHERE source = 'llm'")
+                    self.conn.execute("DELETE FROM embeddings WHERE chunk_index < 0")
+
+                self.conn.commit()
+                logger.info(f"Reset all data and tasks for service: {service_key}")
+            except Exception as e:
+                logger.error(f"Failed to reset data for service {service_key}: {e}")
+            finally:
+                restore_triggers_sql = """
+                    CREATE TRIGGER IF NOT EXISTS t_embed_delete AFTER DELETE ON embeddings
+                    BEGIN
+                        DELETE FROM search_index 
+                        WHERE path = old.path 
+                        AND source = CASE WHEN old.chunk_index < 0 THEN 'llm' ELSE 'embed' END;
+                    END;
+
+                    CREATE TRIGGER IF NOT EXISTS t_ocr_delete AFTER DELETE ON ocr_results
+                    BEGIN
+                        DELETE FROM search_index WHERE path = old.path AND source = 'ocr';
+                    END;
+                """
+                self.conn.executescript(restore_triggers_sql)
+                self.conn.commit()
     
     # Database healing and maintenance
     def validate_integrity(self):

@@ -143,8 +143,8 @@ class Orchestrator:
                             self.queue.put(job)
                             # Release the slot so we can process OCR/Embeds instead
                             self.pool_semaphore.release()
-                            # Sleep briefly to prevent a tight loop if queue is only LLM tasks
-                            time.sleep(0.1)
+                            # Sleep briefly to prevent a tight loop if queue is only LLM tasks. If this line isn't included, everything freezes.
+                            time.sleep(0.05)
                             continue
                         else:
                             # Free to run it. Mark busy.
