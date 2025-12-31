@@ -38,6 +38,9 @@ class Orchestrator:
         self.pool_semaphore = BoundedSemaphore(value=self.config.get('max_workers', 4))
         self.running = False
         self.monitor_thread = None
+        # To limit the number of workers accessing the LLM at once
+        self.llm_lock = threading.Lock()
+        self.llm_busy = False
 
         # Batching State
         self.BATCH_SIZE = self.config.get('batch_size', 16)
@@ -133,6 +136,20 @@ class Orchestrator:
                     self.pool_semaphore.release() # Release if no work found
                     continue
 
+                if job.task_type == "LLM":
+                    with self.llm_lock:
+                        if self.llm_busy:
+                            # LLM is busy! Put the job back for later.
+                            self.queue.put(job)
+                            # Release the slot so we can process OCR/Embeds instead
+                            self.pool_semaphore.release()
+                            # Sleep briefly to prevent a tight loop if queue is only LLM tasks
+                            time.sleep(0.1)
+                            continue
+                        else:
+                            # Free to run it. Mark busy.
+                            self.llm_busy = True
+
                 # Route Job
                 ext = Path(job.path).suffix.lower()
                 img_exts = self.config.get('image_extensions', [])
@@ -168,6 +185,10 @@ class Orchestrator:
         try:
             self._execute_job(job)
         finally:
+            if job.task_type == "LLM":
+                with self.llm_lock:
+                    self.llm_busy = False
+
             self.pool_semaphore.release() # Signal that this thread is free
 
     def _flush_buffer_embed(self, batch_type):

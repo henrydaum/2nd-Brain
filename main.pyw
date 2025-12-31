@@ -27,7 +27,7 @@ CONFIG_DATA = {  # setting name: (display name, description, default value, gui 
     "chunk_size":              ("Chunk Size",                   "Embedding splits text documents into chunks that are each this many tokens.", 256),
     "chunk_overlap":           ("Chunk Overlap",                "How many tokens to share between adjacent chunks.", 16),
     "flush_timeout":           ("Flush Timeout",                "EMBED and DELETE tasks are processed in batches, however, if there are no new tasks after this many seconds, all the remaining tasks will be processed in a batch.", 5.0),
-    "max_workers":             ("Number of Workers",            "How many tasks to process simultaneously. Using more workers is faster but requires more compute.", 6),
+    "max_workers":             ("Number of Workers",            "How many tasks to process simultaneously. Using more workers is faster but requires more compute. LLM tasks are limited to one worker since they can't be done concurrently.", 6),
     "ocr_backend":             ("OCR Backend",                  "Source for OCR. Only option (right now): 'Windows'.", "Windows"),
     "embed_backend":           ("Embed Backend",                "Source for embedding models. Only option: 'Sentence Transformers' (from Hugging Face).", "Sentence Transformers"),
     "embed_text_model_name":   ("Text Embedder Model Name",     "Good options include: 'BAAI/bge-small-en-v1.5', 'BAAI/bge-large-en-v1.5', and 'BAAI/bge-m3'.", "BAAI/bge-small-en-v1.5"),
