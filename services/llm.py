@@ -85,11 +85,11 @@ class LLMService:
             # --- INVOKE AND SAVE ---
             response = self.model.invoke(prompt, image_paths=image_paths, attached_image_path=None, temperature=0.3)
             if ("LM Studio Invoke Error" in response) or ("OpenAI Invoke Error" in response):
-                logger.error(f"✗ LLM invocation error for {path_obj.name}")
+                logger.error(f"✗ LLM invocation error for {path_obj.name}: {response}...")
                 return False
 
             cleaned_response = response.strip()
-            logger.info(f"✓ LLM response made for {path_obj.name}: {cleaned_response[:50]}...")
+            logger.info(f"✓ LLM response made for {path_obj.name}: {cleaned_response}...")
             
             self.db.save_llm_result(job.path, cleaned_response, model_name)
                 

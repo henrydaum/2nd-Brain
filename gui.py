@@ -14,7 +14,7 @@ from collections import deque
 # Internal
 from guiWorkers import SearchWorker, StatsWorker, ModelToggleWorker, DatabaseActionWorker, LLMWorker, SearchFacts
 from Parsers import get_drive_service
-from main import backend_setup
+from main import backend_setup, CONFIG_DATA
 # Qt
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -735,7 +735,7 @@ class MainWindow(QMainWindow):
         self.log_output.setReadOnly(True)
         self.log_output.document().setMaximumBlockCount(1000)  # Only show last 1000 messages
         self.log_output.setFont(QFont("Consolas", 9))
-        self.log_output.setStyleSheet("QTextEdit { background-color: #111; color: #ccc; border: none; selection-color: white; }")  # selection-background-color: blue; 
+        self.log_output.setStyleSheet(f"QTextEdit {{ background-color: {BG_INPUT}; color: #ccc; border: none; selection-color: white; }}")  # selection-background-color: blue; 
         logs_layout.addWidget(self.log_output)
 
         # Add ALL pages to the stack
@@ -1353,28 +1353,26 @@ class MainWindow(QMainWindow):
                
         # Configure content inside the scroll area
         self.settings_layout = QVBoxLayout(scroll_content)
-        self.settings_layout.setContentsMargins(40, 40, 40, 40)
-        self.settings_layout.setSpacing(10)
+        self.settings_layout.setContentsMargins(50, 50, 50, 50)
+        self.settings_layout.setSpacing(0)
         self.settings_layout.setAlignment(Qt.AlignTop)
 
     # SETTINGS SECTION 1: LIVE CONTROLS (No Restart Required)
-        self.add_settings_header("Live Controls")
-
         # A. Model Toggles
         self.btn_ocr_toggle = self.add_live_setting_row("Optical Character Recognition (OCR)", "Extracts text from images for lexical (keyword) search. Lexical search is always enabled.",
-                                  lambda: self.toggle_model('ocr'), color=OUTLINE)
+                                  lambda: self.toggle_model('ocr'), color=TEXT_MAIN)
         self.btn_embed_toggle = self.add_live_setting_row("Embedding Models", "Create embeddings from documents and images for semantic search. Indexes text for lexical search. When the model is loaded, semantic search is enabled.",
-                                  lambda: self.toggle_model('embed'), color=OUTLINE)
+                                  lambda: self.toggle_model('embed'), color=TEXT_MAIN)
         self.btn_llm_toggle = self.add_live_setting_row("Large Language Model (LLM)", "Generates summaries from documents and images, which are then embedded for semantic search and indexed for lexical search. When the model is loaded, AI Insights are generated for search results.",
-                                  lambda: self.toggle_model('llm'), color=OUTLINE)
+                                  lambda: self.toggle_model('llm'), color=TEXT_MAIN)
         self.btn_screenshotter_toggle = self.add_live_setting_row("Screen Capture", f"Takes screenshots every {self.config.get('screenshot_interval', 'N')} seconds.", 
-                                  lambda: self.toggle_model('screenshotter'), color=OUTLINE)
+                                  lambda: self.toggle_model('screenshotter'), color=TEXT_MAIN)
 
-        self.add_live_setting_row("Open Data Folder", "Open the local AppData folder where data records are stored.",
-                                  lambda: os.startfile(DATA_DIR), color=OUTLINE)
+        self.add_live_setting_row("Open Data Folder", "Open the local AppData folder where data records are stored. To reset all settings, delete config.json here.",
+                                  lambda: os.startfile(DATA_DIR), color=TEXT_MAIN)
         # B. External Auth
         self.add_live_setting_row("Reauthorize Google Drive", "Retry the Google OAuth flow by deleting token.json from the local AppData folder.",
-                                  lambda: self.reauthorize_drive(), color=OUTLINE)
+                                  lambda: self.reauthorize_drive(), color=TEXT_MAIN)
         # C. Database Actions
         self.add_live_setting_row("Retry Tasks", "Set all 'FAILED' tasks back to 'PENDING' for retry.",
                                   lambda: self.run_db_action('retry_failed'), color="#d5b462")
@@ -1384,10 +1382,9 @@ class MainWindow(QMainWindow):
                                   lambda: self.run_db_action('reset_service', ['EMBED']), color="#e06c75")
         self.add_live_setting_row("Reset LLM Data", "Delete data from LLM tasks and then re-queue LLM tasks.",
                                   lambda: self.run_db_action('reset_service', ['LLM']), color="#e06c75")
-        self.settings_layout.addSpacing(30)  # Space between sections
+        self.settings_layout.addSpacing(15)  # Space between sections
     
     # SETTINGS SECTION 2: CONFIGURATION
-        self.add_settings_header("System Configuration")
         self.config_widgets = {} # To store inputs for saving
         # Iterate over config keys to create rows
         # Filter this list to hide internal keys!
@@ -1399,7 +1396,7 @@ class MainWindow(QMainWindow):
         self.settings_layout.addSpacing(20)
         
         # Large Save Button
-        btn_save = QPushButton("Save Configuration and Reload")
+        btn_save = QPushButton("Save Settings and Reload")
         btn_save.setFixedHeight(45)
         btn_save.setStyleSheet(f"""
             QPushButton {{ background-color: {BG_DARK}; color: {ACCENT_COLOR}; border-radius: 6px; border: 1px solid {ACCENT_COLOR}; font-weight: bold; }}
@@ -1407,11 +1404,13 @@ class MainWindow(QMainWindow):
         """)
         def save_and_restart():
             self.save_config()
-            self.status_bar.showMessage("Restarting application...", 5000)
+            self.status_bar.showMessage("Reloading backend...", 5000)
             self.restart()
         btn_save.clicked.connect(save_and_restart)
         btn_save.setCursor(Qt.PointingHandCursor)
         self.settings_layout.addWidget(btn_save)
+
+        self.settings_layout.addSpacing(13)
 
     def save_config(self):
         """Reads values from UI inputs and writes to config.json"""        
@@ -1463,19 +1462,13 @@ class MainWindow(QMainWindow):
         self.workers.append(worker)
         worker.start()
 
-    def add_settings_header(self, text):
-        lbl = QLabel(text)
-        lbl.setFont(QFont("Segoe UI", 16, QFont.Bold))
-        lbl.setStyleSheet(f"color: {ACCENT_COLOR}; margin-bottom: 10px;")
-        self.settings_layout.addWidget(lbl)
-
     def add_live_setting_row(self, title, subtitle, callback, color):
         """Creates a row with Title, Subtitle, and an Action Button for the settings."""
         frame = QFrame()
-        frame.setStyleSheet(f"background-color: {BG_LIGHT}; border-radius: 6px;")
+        frame.setStyleSheet(f"background-color: {BG_DARK}; border-radius: 0px; border-bottom: 1px solid {OUTLINE};")
         frame.setMinimumHeight(60)
         layout = QHBoxLayout(frame)
-        layout.setContentsMargins(15, 10, 15, 10)
+        layout.setContentsMargins(15, 15, 15, 15)
         # Text
         text_layout = QVBoxLayout()
         text_layout.setSpacing(2)
@@ -1485,17 +1478,17 @@ class MainWindow(QMainWindow):
         t.setStyleSheet("border: none; background: transparent;")
         s = QLabel(subtitle)
         s.setWordWrap(True)
-        s.setFont(QFont("Segoe UI", 9))
+        s.setFont(QFont("Segoe UI", 8))
         s.setStyleSheet("color: #888; border: none; background: transparent;")
         text_layout.addWidget(t)
         text_layout.addWidget(s)
         # Button
         btn_text_color = "white"
         btn = QPushButton("Execute")
-        btn.setFixedSize(90, 30)
+        btn.setFixedWidth(95)
         btn.setStyleSheet(f"""
-            QPushButton {{ background-color: {BG_LIGHT}; color: {btn_text_color}; border-radius: 4px; border: 1px solid {color}; }}
-            QPushButton:hover {{ background-color: {color}; }}
+            QPushButton {{ background-color: transparent; color: {color}; border: 1px solid {color}; text-align: center; padding: 4px; }}
+            QPushButton:hover {{ text-decoration: underline; }}
         """)
         btn.clicked.connect(callback)
         btn.setCursor(Qt.PointingHandCursor)
@@ -1508,32 +1501,39 @@ class MainWindow(QMainWindow):
     def add_config_row(self, key, value):
         """Creates a row with Key Label and an Input Field based on config.json"""
         frame = QFrame()
-        frame.setStyleSheet(f"background-color: {BG_LIGHT}; border-radius: 6px;")
-        frame.setFixedHeight(50)
-        layout = QHBoxLayout(frame)
-        layout.setContentsMargins(15, 0, 15, 0)
-        # Label (Clean up the key name: 'ocr_backend' -> 'OCR Backend')
-        clean_name = key.replace("_", " ").title()
-        lbl = QLabel(clean_name)
-        lbl.setFont(QFont("Segoe UI", 11))
-        lbl.setStyleSheet("border: none; background: transparent;")
+        frame.setStyleSheet(f"background-color: {BG_DARK}; border-radius: 6px;")
+        frame.setMinimumHeight(60)
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(15, 15, 15, 15)
+        # Text
+        text_layout = QVBoxLayout()
+        text_layout.setSpacing(2)
+        text_layout.setAlignment(Qt.AlignVCenter)
+        title = CONFIG_DATA[key][0]
+        subtitle = CONFIG_DATA[key][1]
+        t = QLabel(title)
+        t.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        t.setStyleSheet("border: none; background: transparent;")
+        s = QLabel(subtitle)
+        s.setWordWrap(True)
+        s.setFont(QFont("Segoe UI", 8))
+        s.setStyleSheet("color: #888; border: none; background: transparent;")
+        text_layout.addWidget(t)
+        text_layout.addWidget(s)
         # Input
         inp = QLineEdit(str(value))
-        inp.setAlignment(Qt.AlignRight)
         inp.setStyleSheet(f"""
             background-color: {BG_INPUT}; 
             border: 0px solid {OUTLINE}; 
-            border-radius: 8px; 
+            border-radius: 0px; 
             color: {ACCENT_COLOR};
             padding: 4px;
         """)
-        inp.setFixedWidth(500)
         inp.setCursor(Qt.IBeamCursor)
         # Store for saving later
         self.config_widgets[key] = inp
         # Assemble
-        layout.addWidget(lbl)
-        layout.addStretch()
+        layout.addLayout(text_layout, 1)
         layout.addWidget(inp)
         self.settings_layout.addWidget(frame)
 
@@ -1550,7 +1550,7 @@ class MainWindow(QMainWindow):
         else:
             self.btn_embed_toggle.setText("Load")
         # LLM
-        if self.models.get('llm') and self.models['llm'].loaded:
+        if self.models['llm'].loaded:
             self.btn_llm_toggle.setText("Unload")
         else:
             self.btn_llm_toggle.setText("Load")

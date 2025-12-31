@@ -115,7 +115,7 @@ class SearchWorker(QThread):
         if self.searchfacts.image_attachment:
             query_tuples.append(("image", self.searchfacts.image_attachment))
 
-        final_results = self.search_engine.hybrid_search(query_tuples, top_k=30, folder_filter=self.searchfacts.folder_filter, source_filter=self.searchfacts.source_filter)
+        final_results = self.search_engine.hybrid_search(query_tuples, top_k=self.search_engine.config.get('num_results', 50), folder_filter=self.searchfacts.folder_filter, source_filter=self.searchfacts.source_filter)
 
         text_results = final_results['text']
         image_results = final_results['image']
