@@ -36,11 +36,9 @@ class Orchestrator:
         self.queue = queue.PriorityQueue()
         self.executor = ThreadPoolExecutor(max_workers=self.config.get('max_workers', 4), thread_name_prefix="Worker")
         self.pool_semaphore = BoundedSemaphore(value=self.config.get('max_workers', 4))
+
         self.running = False
         self.monitor_thread = None
-        # To limit the number of workers accessing the LLM at once
-        self.llm_lock = threading.Lock()
-        self.llm_busy = False
 
         # Batching State
         self.BATCH_SIZE = self.config.get('batch_size', 16)
@@ -51,6 +49,12 @@ class Orchestrator:
         self.last_image_flush = time.time()
         self.delete_buffer = []
         self.last_delete_flush = time.time()
+
+        # Timeout Tracking
+        self.TASK_TIMEOUT = self.config.get('task_timeout', 300)  # 5 minutes
+        self.active_jobs = {}    # Key: (path, task_type), Value: {'start_time': float, 'job': Job}
+        self.active_jobs_lock = threading.Lock()
+        self.last_timeout_check = time.time()
 
     def start(self):
         self.running = True
@@ -97,7 +101,7 @@ class Orchestrator:
             # Otherwise, it sleeps in the DB
             logger.debug(f"Saved (Pending Model): {task_type} for {path}")
 
-    # --- 2. THE NEW WAKE-UP METHOD ---
+    # Wakie wakie!
     def resume_pending(self, task_type):
         """Called by Tray when a model is toggled ON."""
         # logger.info(f"Signal: Waking up {task_type} tasks...")
@@ -129,26 +133,17 @@ class Orchestrator:
                 if self.delete_buffer and (current_time - self.last_delete_flush > self.FLUSH_TIMEOUT):
                     self._flush_buffer_delete()
 
+                # Check Timeouts (about every 5 seconds)
+                if current_time - self.last_timeout_check > 5.0:
+                    self._check_timeouts()
+                    self.last_timeout_check = current_time
+
                 # Get Job
                 try:
                     job = self.queue.get(timeout=0.5) 
                 except queue.Empty:
                     self.pool_semaphore.release() # Release if no work found
                     continue
-
-                if job.task_type == "LLM":
-                    with self.llm_lock:
-                        if self.llm_busy:
-                            # LLM is busy! Put the job back for later.
-                            self.queue.put(job)
-                            # Release the slot so we can process OCR/Embeds instead
-                            self.pool_semaphore.release()
-                            # Sleep briefly to prevent a tight loop if queue is only LLM tasks. If this line isn't included, everything freezes.
-                            time.sleep(0.05)
-                            continue
-                        else:
-                            # Free to run it. Mark busy.
-                            self.llm_busy = True
 
                 # Route Job
                 ext = Path(job.path).suffix.lower()
@@ -181,15 +176,51 @@ class Orchestrator:
                 logger.error(f"Dispatch Error: {e}")
                 self.pool_semaphore.release()
 
+    def _check_timeouts(self):
+        """Scans active jobs for stuck threads."""
+        now = time.time()
+        to_remove = []
+
+        with self.active_jobs_lock:
+            for key, data in self.active_jobs.items():
+                if now - data['start_time'] > self.TASK_TIMEOUT:
+                    to_remove.append(data['job'])
+            
+            for job in to_remove:
+                key = (job.path, job.task_type)
+                if key in self.active_jobs:
+                    del self.active_jobs[key]
+                    
+                    # Update DB to Failed
+                    logger.error(f"✗ TIMEOUT: Task {job.task_type} for {Path(job.path).name} exceeded {self.TASK_TIMEOUT}s. Abandoning thread.")
+                    self.db.add_or_update_task(job.path, job.task_type, "FAILED")
+                    
+                    # Release Semaphore so new work can enter
+                    self.pool_semaphore.release()
+
     def _execute_job_wrapper(self, job):
+        # Create a unique key for this specific task
+        key = (job.path, job.task_type)
+        
+        # --- 1. CLOCK IN (Register Start Time) ---
+        with self.active_jobs_lock:
+            self.active_jobs[key] = {'start_time': time.time(), 'job': job}
+
         try:
             self._execute_job(job)
         finally:
-            if job.task_type == "LLM":
-                with self.llm_lock:
-                    self.llm_busy = False
-
-            self.pool_semaphore.release() # Signal that this thread is free
+            # --- 2. CLOCK OUT (Cleanup) ---
+            # Only remove it if the timeout checker hasn't already removed it!
+            with self.active_jobs_lock:
+                if key in self.active_jobs:
+                    del self.active_jobs[key]
+                    # Release the semaphore normally
+                    self.pool_semaphore.release() 
+                else:
+                    # If we are NOT in the list, it means _check_timeouts removed us.
+                    # We do NOT release the semaphore here because _check_timeouts 
+                    # already did it to unblock the queue.
+                    pass
 
     def _flush_buffer_embed(self, batch_type):
         target_buffer = self.text_buffer if batch_type == "text" else self.image_buffer
