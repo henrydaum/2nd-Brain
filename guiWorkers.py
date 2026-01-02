@@ -75,6 +75,9 @@ class SearchWorker(QThread):
         self.searchfacts = searchfacts
         self._is_running = True
 
+    def stop(self):
+        self._is_running = False
+
     def run(self):
         """Performs two hybrid seaches: one for text and one for images."""
         if not self._is_running: return
@@ -144,6 +147,9 @@ class LLMWorker(QThread):
         self.searchfacts = searchfacts
         self.config = config
         self._is_running = True
+
+    def stop(self):
+        self._is_running = False
 
     def run(self):
         # If the LLM model is not loaded, exit early
@@ -270,9 +276,6 @@ class LLMWorker(QThread):
             self.chunk_ready.emit(f"\nLLM Worker error during generation: {e}")
         finally:
             self.finished.emit()
-
-    def stop(self):
-        self._is_running = False
 
 class StatsWorker(QThread):
     """Continuously polls the database for system stats and emits them to the GUI."""

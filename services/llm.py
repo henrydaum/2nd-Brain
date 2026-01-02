@@ -89,7 +89,7 @@ class LLMService:
                 return False
 
             cleaned_response = response.strip()
-            logger.info(f"✓ LLM response made for {path_obj.name}: {cleaned_response}...")
+            logger.info(f"✓ LLM response made for {path_obj.name}: {cleaned_response[:50]}...")
             
             self.db.save_llm_result(job.path, cleaned_response, model_name)
                 

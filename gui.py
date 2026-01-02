@@ -518,7 +518,7 @@ class MainWindow(QMainWindow):
         # SEARCH BAR - TEXT INPUT
         self.search_input_vertical_padding = 12
         self.search_input = QTextEdit()
-        self.search_input.setPlaceholderText("")
+        self.search_input.setPlaceholderText("Search")
         # Dynamically adjust height based on content
         doc_height = int(self.search_input.document().size().height())
         self.search_input_min_height = doc_height
@@ -980,23 +980,30 @@ class MainWindow(QMainWindow):
         """The main entry point to start a search operation. Handles UI updates, worker management, and information collection."""
         query = self.search_input.toPlainText().strip()
         if not query and not self.attached_file_path:
-            # This gives user the ability to get a clear slate, optional feature might remove
+            # This gives user the ability to get a clean slate, optional feature might remove
             self.doc_table.setRowCount(0)
             self.image_list.clear()
             self.llm_output.clear()
             return
         # Initialize data class to coordinate critical search information
         searchfacts = SearchFacts(query=query, attachment_path=self.attached_file_path, folder_filter=self.folder_filter, source_filter=self.source_filter)
-        # 1. Stop previous worker if it's still running (prevents race conditions)
-        if self.workers:
-            for w in self.workers:
-                if isinstance(w, SearchWorker) and w.isRunning():
-                    w.stop()
-        # 2. Clear UI immediately (Instant feedback)
+        # 1. Clear UI immediately (Instant feedback)
         self.btn_send.setIcon(self.send_spin_icon)
         self.doc_table.setRowCount(0)
         self.image_list.clear()
         self.llm_output.clear()
+        # 2. Stop previous worker if it's still running (prevents race conditions)
+        if self.workers:
+            # Loop over a copy [:] to remove items safely
+            for w in self.workers[:]:
+                if (isinstance(w, SearchWorker) or isinstance(w, LLMWorker)) and w.isRunning():
+                    logger.info(f"Cancelling active worker: {w}")
+                    # A. Cut the wire so it doesn't trigger the next step (e.g. Search -> RAG)
+                    try: w.finished.disconnect() 
+                    except: pass
+                    # self.status_bar.showMessage("Stopping previous search...")
+                    w.stop()
+                    self.workers.remove(w)
         # 3. Initialize Streaming Worker - does the actual search
         worker = SearchWorker(self.search_engine, searchfacts)
         # 4. Connect the split signals that return the results
@@ -1066,9 +1073,12 @@ class MainWindow(QMainWindow):
     def start_rag_generation(self, searchfacts):
         # A. Stop any existing LLM generation
         if self.workers:
-            for w in self.workers:
+            for w in self.workers[:]:
                 if isinstance(w, LLMWorker) and w.isRunning():
+                    try: w.finished.disconnect()
+                    except: pass
                     w.stop()
+                    self.workers.remove(w)
         # B. Clear Output
         self.accumulated_markdown = ""
         # C. Start the Worker
