@@ -333,6 +333,7 @@ class Database:
                 # Temporarily disable triggers to avoid overhead
                 self.conn.execute("DROP TRIGGER IF EXISTS t_embed_delete;")
                 self.conn.execute("DROP TRIGGER IF EXISTS t_ocr_delete;")
+                self.conn.commit()
 
                 if service_key == 'OCR':
                     self.conn.execute("DELETE FROM search_index WHERE source = 'ocr'")
@@ -359,21 +360,24 @@ class Database:
             except Exception as e:
                 logger.error(f"Failed to reset data for service {service_key}: {e}")
             finally:
-                restore_triggers_sql = """
-                    CREATE TRIGGER IF NOT EXISTS t_embed_delete AFTER DELETE ON embeddings
-                    BEGIN
-                        DELETE FROM search_index 
-                        WHERE path = old.path 
-                        AND source = CASE WHEN old.chunk_index < 0 THEN 'llm' ELSE 'embed' END;
-                    END;
-
-                    CREATE TRIGGER IF NOT EXISTS t_ocr_delete AFTER DELETE ON ocr_results
-                    BEGIN
-                        DELETE FROM search_index WHERE path = old.path AND source = 'ocr';
-                    END;
-                """
-                self.conn.executescript(restore_triggers_sql)
-                self.conn.commit()
+                try:
+                    self.conn.execute("""
+                        CREATE TRIGGER IF NOT EXISTS t_embed_delete AFTER DELETE ON embeddings
+                        BEGIN
+                            DELETE FROM search_index 
+                            WHERE path = old.path 
+                            AND source = CASE WHEN old.chunk_index < 0 THEN 'llm' ELSE 'embed' END;
+                        END
+                    """)
+                    self.conn.execute("""
+                        CREATE TRIGGER IF NOT EXISTS t_ocr_delete AFTER DELETE ON ocr_results
+                        BEGIN
+                            DELETE FROM search_index WHERE path = old.path AND source = 'ocr';
+                        END
+                    """)
+                    self.conn.commit()
+                except Exception as e:
+                    logger.error(f"Failed to restore triggers: {e}")
     
     # Database healing and maintenance
     def validate_integrity(self):

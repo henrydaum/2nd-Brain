@@ -53,7 +53,7 @@ class LLMService:
                     drive_service = get_drive_service(self.config)
 
                     full_text = get_text_content(Path(job.path), drive_service, self.config)
-                    if not full_text:
+                    if not full_text.strip():
                         logger.warning(f"✗ No valid text extracted from {path_obj.name}.")
                         return False
                     
