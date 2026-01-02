@@ -222,7 +222,7 @@ class LLMWorker(QThread):
         for cand in candidates:
             r = cand['data']
             # Format the item string just like in the final prompt
-            item_str = f"PATH: {r['path']} | SCORE: {r['score']:.3f} | CONTENT: {r['content']}\n\n"
+            item_str = f"PATH: {r['path']} | SCORE: {r['score']*100:.2f} | CONTENT: {r['content']}\n\n"
             
             # Calculate cost for this specific item
             item_cost = count_tokens(item_str)
