@@ -261,6 +261,12 @@ class SearchEngine:
                          merged_docs[media_type][path] = item
                          merged_docs[media_type][path]['num_hits'] = current_hits
                          merged_docs[media_type][path]['result_type'] = current_result_type
+                        
+                    # D. Merge source info
+                    existing_sources = set(stored_doc['source'].split(', '))
+                    new_sources = set(item['source'].split(', '))
+                    combined_sources = existing_sources.union(new_sources)
+                    merged_docs[media_type][path]['source'] = ', '.join(sorted(combined_sources))
 
                 # RRF Math
                 if path not in merged_scores[media_type]: merged_scores[media_type][path] = 0.0

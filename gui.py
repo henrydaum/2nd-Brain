@@ -247,39 +247,51 @@ class ResultDetailsDialog(QDialog):
         
         self.setStyleSheet(f"""
             QDialog {{ background-color: {BG_DARK}; color: {TEXT_MAIN}; }}
-            QLabel {{ color: {TEXT_MAIN}; font-size: 14px; }}
+            QLabel {{ color: {TEXT_MAIN}; font-size: 18px; }}
             QTextBrowser {{ background-color: {BG_LIGHT}; border: none; padding: 10px; color: {TEXT_MAIN}; font-size: 13px; }}
         """)
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(15)
+        layout.setSpacing(5)
         layout.setContentsMargins(20, 20, 20, 20)
 
         # 1. Header (Filename)
         lbl_name = QLabel(Path(self.path).name)
-        lbl_name.setFont(QFont("Segoe UI", 16, QFont.Bold))
-        lbl_name.setStyleSheet(f"color: {ACCENT_COLOR};")
+        lbl_name.setFont(QFont("Segoe UI", 14, QFont.Bold))
+        lbl_name.setStyleSheet(f"color: {TEXT_MAIN};")
         layout.addWidget(lbl_name)
 
-        # 2. Metadata Row (Score | Type)
+        # 2. File Path
+        path = item_data.get('path', 'Unknown Path')
+        lbl_path = QLabel(f"<I>{path}</I>")
+        layout.addWidget(lbl_path)
+        lbl_path.setStyleSheet("color: #888; font-size: 11px; ")
+
+        # 3. Metadata Row (Score | Method  | Source | Hits)
         meta_layout = QHBoxLayout()
-        score = item_data.get('score', 0.0)
+        score = item_data.get('score', 0.0) * 100
         m_type = item_data.get('result_type', 'Unknown').upper()
         num_hits = item_data.get('num_hits', 1)
         
-        lbl_meta = QLabel(f"<b>SCORE:</b> {score:.4f}   |   <b>TYPE:</b> {m_type}   |   <b>HITS:</b> {num_hits}")
-        lbl_meta.setStyleSheet("color: #888;")
+        lbl_meta = QLabel(f"<b>SCORE:</b> {score:.2f}   |   <b>METHOD:</b> {m_type}   |   <B>SOURCE:</b> {item_data.get('source', 'Unknown')}  |   <b>HITS:</b> {num_hits}")
+        lbl_meta.setStyleSheet("color: #888; font-size: 13px; ")
         meta_layout.addWidget(lbl_meta)
         meta_layout.addStretch()
         layout.addLayout(meta_layout)
 
-        # 3. Content Area (The Text)
+        layout.addSpacing(10)
+
+        # 4. Content Area (The Text)
         self.text_browser = QTextBrowser()
-        content = item_data.get('content', 'No preview text available.')
+        content = item_data.get('content', 'No preview text available.').strip()
+        if self.path and content.startswith(self.path):
+            content = content[len(self.path):].strip()
         self.text_browser.setText(content)
         layout.addWidget(self.text_browser)
 
-        # 4. Buttons (Open File | Close)
+        layout.addSpacing(10)
+
+        # 5. Buttons (Open File | Close)
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
         hover_tint = get_tint(ACCENT_COLOR, 0.1)
@@ -1064,7 +1076,11 @@ class MainWindow(QMainWindow):
             icon = QIcon()
             icon.addPixmap(pixmap, QIcon.Mode.Normal)
             icon.addPixmap(pixmap, QIcon.Mode.Selected)  # This was needed to fix an error where the highlighted icon was magenta
-            list_item = QListWidgetItem(icon, Path(item['path']).name)
+            list_item = QListWidgetItem(icon, f"{Path(item['path']).stem}")
+            font = QFont()
+            font.setBold(True)
+            font.setPointSize(11)
+            list_item.setFont(font)
             list_item.setData(Qt.UserRole, item)
             self.image_list.addItem(list_item)            
         except Exception as e: 
@@ -1421,6 +1437,21 @@ class MainWindow(QMainWindow):
         btn_save.clicked.connect(save_and_restart)
         btn_save.setCursor(Qt.PointingHandCursor)
         self.settings_layout.addWidget(btn_save, 0, Qt.AlignCenter)
+
+        self.settings_layout.addSpacing(17)
+
+        # Quit Application Button
+        btn_quit = QPushButton("Quit")
+        btn_quit.setFixedHeight(35)
+        btn_quit.setFixedWidth(120)
+        hover_tint = get_tint(TEXT_MAIN, 0.1)
+        btn_quit.setStyleSheet(f"""
+            QPushButton {{ background-color: transparent; color: {TEXT_MAIN}; text-align: center; padding: 4px; border-radius: 0px; border: 1px solid {hover_tint}; }}
+            QPushButton:hover {{ text-decoration: underline; background-color: {hover_tint}; }}
+        """)
+        btn_quit.clicked.connect(QApplication.quit)
+        btn_quit.setCursor(Qt.PointingHandCursor)
+        self.settings_layout.addWidget(btn_quit, 0, Qt.AlignCenter)
 
     def save_config(self):
         """Reads values from UI inputs and writes to config.json"""        
