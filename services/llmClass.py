@@ -173,7 +173,8 @@ class LMStudioLLM(BaseLLM):
             response = self.model.respond(chat_input, config={"temperature": temperature})
             return response.content
         except Exception as e:
-            return f"LM Studio Invoke Error: {e}"
+            logger.error(f"LM Studio Invoke Error: {e}")
+            return None
         finally:
             if temp_files:
                 import time
@@ -186,7 +187,8 @@ class LMStudioLLM(BaseLLM):
             for fragment in self.model.respond_stream(chat_input, config={"temperature": temperature}):
                 yield fragment.content
         except Exception as e:
-            return f"LM Studio Stream Error: {e}"
+            logger.error(f"LM Studio Stream Error: {e}")
+            return None
         finally:
             if temp_files:
                 import time
@@ -270,7 +272,8 @@ class OpenAILLM(BaseLLM):
             )
             return response.choices[0].message.content
         except Exception as e:
-            return f"OpenAI Invoke Error: {e}"
+            logger.error(f"OpenAI Invoke Error: {e}")
+            return None
 
     def stream(self, prompt, image_paths=[], attached_image_path=None, temperature=1.0):
         try:
@@ -285,4 +288,5 @@ class OpenAILLM(BaseLLM):
                 if chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
         except Exception as e:
-            yield f"OpenAI Stream Error: {e}"
+            logger.error(f"OpenAI Stream Error: {e}")
+            return None

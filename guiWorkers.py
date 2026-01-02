@@ -268,12 +268,14 @@ class LLMWorker(QThread):
                 ):
                 if not self._is_running: 
                     break
+                if chunk is None:
+                    break
                 # Emit the chunk to the main thread
                 self.chunk_ready.emit(chunk)
                 final_response += chunk
             logger.info(f"LLM response completed; total length: {count_tokens(final_response)} tokens")
         except Exception as e:
-            self.chunk_ready.emit(f"\nLLM Worker error during generation: {e}")
+            logger.error(f"Encountered an error while streaming: {e}")
         finally:
             self.finished.emit()
 
@@ -348,6 +350,7 @@ class DatabaseActionWorker(QThread):
                     self.orchestrator.submit_task(task_type, path, priority=1, mtime=0)
                     count += 1
                 self.finished.emit(f"Retried and re-queued {count} failed tasks.")
+                logger.info(f"Retried and re-queued {count} failed tasks.")
 
             elif self.action_type == 'reset_service':
                 count = 0
@@ -359,5 +362,6 @@ class DatabaseActionWorker(QThread):
                             self.orchestrator.submit_task(task_type, path, priority=1, mtime=0)
                             count += 1
                 self.finished.emit(f"Reset {' '.join(self.service_keys)} and re-queued {count} tasks.")
+                logger.info(f"Reset {' '.join(self.service_keys)} and re-queued {count} tasks.")
         except Exception as e:
             self.finished.emit(f"Error: {e}")
