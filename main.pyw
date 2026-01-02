@@ -152,10 +152,8 @@ def main():
     window.watcher.stop()
     window.orchestrator.stop()
     for key, model in window.models.items():
-        try:
+        if model.loaded:
             model.unload()
-        except Exception as e:
-            logger.error(f"Error unloading model {key}: {e}")
     logger.info("Goodbye.")
     sys.exit(exit_code)
 
