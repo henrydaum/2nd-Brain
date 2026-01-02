@@ -685,7 +685,7 @@ class MainWindow(QMainWindow):
         self.image_list.setWordWrap(True)
         self.image_list.setTextElideMode(Qt.ElideNone)
         self.image_list.setMovement(QListWidget.Static)
-        self.image_list.setGridSize(QSize(200, 240))
+        self.image_list.setGridSize(QSize(200, 200))
         self.image_list.itemClicked.connect(self.open_results_dialog_from_list)
         self.image_list.setStyleSheet(f"""
             QListWidget {{ background-color: {BG_DARK}; border: none; outline: 0; selection-background-color: {BG_DARK}; padding-left: 35px; }}
@@ -1076,10 +1076,10 @@ class MainWindow(QMainWindow):
             icon = QIcon()
             icon.addPixmap(pixmap, QIcon.Mode.Normal)
             icon.addPixmap(pixmap, QIcon.Mode.Selected)  # This was needed to fix an error where the highlighted icon was magenta
-            list_item = QListWidgetItem(icon, f"{Path(item['path']).stem}")
+            list_item = QListWidgetItem(icon, f"{Path(item['path']).name}")
             font = QFont()
             font.setBold(True)
-            font.setPointSize(11)
+            font.setPointSize(10.5)
             list_item.setFont(font)
             list_item.setData(Qt.UserRole, item)
             self.image_list.addItem(list_item)            
