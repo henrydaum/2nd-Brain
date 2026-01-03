@@ -1146,7 +1146,7 @@ class MainWindow(QMainWindow):
 
     def toggle_model(self, key):
         """Toggles loading/unloading of a model in a separate thread using ModelToggleWorker."""
-        current = False
+        current = False  # Temp var
         # Find current state
         if key == 'ocr': current = self.models['ocr'].loaded
         elif key == 'embed': current = self.models['text'].loaded
@@ -1154,6 +1154,19 @@ class MainWindow(QMainWindow):
         elif key == 'screenshotter': current = self.models['screenshotter'].loaded
         # Decide action based on state
         action = "unload" if current else "load"
+        # Set text to "Loading..."
+        if key == 'ocr':
+            self.btn_ocr_toggle.setText("Loading" if action == "load" else "Unloading")
+            self.act_ocr.setText("Loading OCR" if action == "load" else "Unloading OCR")
+        elif key == 'embed':
+            self.btn_embed_toggle.setText("Loading" if action == "load" else "Unloading")
+            self.act_embed.setText("Loading Embedders" if action == "load" else "Unloading Embedders")
+        elif key == 'llm':
+            self.btn_llm_toggle.setText("Loading" if action == "load" else "Unloading")
+            self.act_llm.setText("Loading LLM" if action == "load" else "Unloading LLM")
+        elif key == 'screenshotter':
+            self.btn_screenshotter_toggle.setText("Starting" if action == "load" else "Stopping")
+            self.act_screenshot.setText("Starting Screen Capture" if action == "load" else "Stopping Screen Capture")
         # Start the worker
         worker = ModelToggleWorker(self.models, key, action)
         worker.finished.connect(self.on_model_toggle_done)
