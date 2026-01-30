@@ -318,7 +318,7 @@ class Database:
     def retry_all_failed(self):
         """Resets all FAILED tasks to PENDING so the Orchestrator picks them up again."""
         with self.lock:
-            self.conn.execute("UPDATE tasks SET status='PENDING' WHERE status != 'DONE'")
+            self.conn.execute("UPDATE tasks SET status='PENDING' WHERE status = 'FAILED'")
             self.conn.commit()
         logger.info("Reset all FAILED tasks to PENDING.")
 

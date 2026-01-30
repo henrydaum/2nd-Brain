@@ -63,7 +63,7 @@ class LLMService:
                         context_limit = self.config.get('llm_context_length', 4096)
                         tokens = enc.encode(full_text, disallowed_special=())
                         # context_limit is now treated as TOKENS, not characters
-                        text = enc.decode(tokens[:context_limit-512])  # Room for prompt + response
+                        text = enc.decode(tokens[:context_limit-1024])  # Room for prompt + response + error
                     except Exception as e:
                         logger.error(f"✗ Tokenization error for {path_obj.name}: {e}")
                         text = full_text[:10000]
